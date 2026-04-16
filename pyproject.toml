@@ -24,4 +24,11 @@ gws-cli = "gws_cli.main:app"
 [dependency-groups]
 dev = [
     "pytest>=9.0.3",
+    "ruff>=0.15.10",
 ]
+
+[tool.ruff]
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]

@@ -1,7 +1,5 @@
 from unittest.mock import MagicMock
 
-import google.auth
-
 import gws_cli.auth as auth_module
 from gws_cli.auth import SCOPES, get_credentials
 

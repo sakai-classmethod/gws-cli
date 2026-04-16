@@ -39,19 +39,11 @@ def extract_section(text: str, section: str | None) -> str:
 
 def get_doc_content(service: Any, doc_id: str, fmt: str = "plain") -> str:
     if fmt == "md":
-        raw = (
-            service.files()
-            .export(fileId=doc_id, mimeType="text/html")
-            .execute()
-        )
+        raw = service.files().export(fileId=doc_id, mimeType="text/html").execute()
         html = _strip_style_attributes(raw.decode("utf-8"))
         return markdownify(html)
     else:
-        raw = (
-            service.files()
-            .export(fileId=doc_id, mimeType="text/plain")
-            .execute()
-        )
+        raw = service.files().export(fileId=doc_id, mimeType="text/plain").execute()
         return raw.decode("utf-8")
 
 
@@ -68,4 +60,4 @@ def get_command(
         print(content)
     except HttpError as e:
         print(f"Error: {e.resp.status} {e.resp.reason}", file=sys.stderr)
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from None

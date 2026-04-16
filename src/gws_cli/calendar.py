@@ -31,4 +31,4 @@ def attachments_command(
         print(json.dumps(result, ensure_ascii=False))
     except HttpError as e:
         print(f"Error: {e.resp.status} {e.resp.reason}", file=sys.stderr)
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from None

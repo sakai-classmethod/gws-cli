@@ -16,7 +16,9 @@ def _make_http_error(status, reason, content):
 def _make_service_mock(execute_return=None, execute_side_effect=None):
     service = MagicMock()
     request_mock = MagicMock()
-    request_mock.uri = "https://www.googleapis.com/calendar/v3/calendars/primary/events/evt"
+    request_mock.uri = (
+        "https://www.googleapis.com/calendar/v3/calendars/primary/events/evt"
+    )
     if execute_side_effect:
         request_mock.execute.side_effect = execute_side_effect
     else:
@@ -26,15 +28,17 @@ def _make_service_mock(execute_return=None, execute_side_effect=None):
 
 
 def test_get_attachments_returns_attachment_list():
-    service = _make_service_mock(execute_return={
-        "attachments": [
-            {
-                "fileId": "file-123",
-                "title": "Agenda.pdf",
-                "fileUrl": "https://drive.google.com/file/d/file-123/view",
-            }
-        ]
-    })
+    service = _make_service_mock(
+        execute_return={
+            "attachments": [
+                {
+                    "fileId": "file-123",
+                    "title": "Agenda.pdf",
+                    "fileUrl": "https://drive.google.com/file/d/file-123/view",
+                }
+            ]
+        }
+    )
 
     result = get_attachments(service, event_id="event-123", calendar_id="primary")
 
