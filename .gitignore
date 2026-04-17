@@ -4,3 +4,5 @@ __pycache__/
 dist/
 .pytest_cache/
 client_secret*.json
+.claude/plans
+*local*

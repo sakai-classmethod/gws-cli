@@ -1,7 +1,7 @@
 [project]
 name = "gws-cli"
 version = "0.1.0"
-description = "Read-only CLI for Google Workspace resources"
+description = "CLI for reading Google Workspace resources and uploading files to My Drive"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
