@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/sakai-classmethod/gws-cli/compare/gws-cli-v0.1.0...gws-cli-v0.2.0) (2026-04-17)
+
+
+### Features
+
+* drive upload コマンドでマイドライブへのファイルアップロードを追加 ([#4](https://github.com/sakai-classmethod/gws-cli/issues/4)) ([94246d6](https://github.com/sakai-classmethod/gws-cli/commit/94246d62cee3882cd28dadc294f84b515e6cdc30))
+
 ## 0.1.0 (2026-04-16)
 
 
