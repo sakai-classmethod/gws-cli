@@ -51,6 +51,11 @@ gws-cli docs get <doc-id> [--format plain|md] [--section transcript|notes]
 - `--format`: 出力形式（デフォルト: `plain`、`md` で Markdown 変換）
 - `--section`: セクション抽出（`transcript` で文字起こしのみ、`notes` でメモのみ）
 
+挙動:
+- `--format` と `--section` は独立に適用される（先に format 変換 → 後からセクション抽出）。両方同時に指定可能
+- `doc-id` は Google Docs 形式（`mimeType: application/vnd.google-apps.document`）のファイルに限定。PDF / スプレッドシート / スライド等は `files.export` が失敗しエラー終了
+- `--section transcript|notes` 指定時、対応するマーカー（`📖 文字起こし` / `📝 メモ`）が本文に含まれない場合は全文を返す（silent fallback。エラーにはならない）
+
 ### Drive アップロード
 
 ```bash
@@ -65,11 +70,12 @@ gws-cli drive upload <local-path> [--folder-id <folder-id>] [--name <drive-name>
 - 出力: JSON（`fileId`, `name`, `mimeType`, `webViewLink`, `action`）。`action` は `created` または `updated`
 
 挙動:
-- 同名 0 件: 新規作成
+- 同名 0 件: 新規作成（`--overwrite` を付けても害はない。新規作成パスに進む）
 - 同名 1 件 + `--overwrite`: revision 上書き（stderr に `previousRevisionId` を表示）
 - 同名 1 件 + `--overwrite` なし: エラー終了
 - 同名 2 件以上: エラー終了（`--overwrite` 有無にかかわらず）
 - 共有ドライブ配下のフォルダ指定: エラー終了（マイドライブ限定）
+- `--keep-forever` は `action` が `created`（新規作成の初回 revision）でも `updated`（上書き後の最新 revision）でも付与される
 
 ## 典型的なワークフロー
 
@@ -98,8 +104,10 @@ gws-cli calendar attachments <event-id>
 
 レスポンス例:
 ```json
-[{"fileId": "1aBcD...", "title": "Gemini によるメモ", "fileUrl": "https://docs.google.com/..."}]
+[{"fileId": "1aBcD...", "title": "Gemini によるメモ", "fileUrl": "https://docs.google.com/...", "mimeType": "application/vnd.google-apps.document"}]
 ```
+
+添付が複数件ある場合は、文字起こし/メモは Docs 形式で、`title` に「メモ」「Gemini」「議事録」「transcript」などが含まれる。`mimeType: application/vnd.google-apps.document` 以外（PDF など）は `docs get` に渡せないので除外する。候補を特定できない場合はユーザーに選択を確認する。
 
 #### Step 3: 文字起こしテキストを取得
 
@@ -157,6 +165,7 @@ gws-cli drive upload ./proposal.pptx --overwrite --keep-forever
 - 同じフォルダ・同じ名前の対象に並行アップロードを走らせるとレース条件で重複作成になるため、Agent ワークフローでは逐次実行すること
 - バイナリファイル（PPTX/PDF など）の revision は標準で 30 日 / 100 件の早い方が上限。長期保存が必要なら `--keep-forever` を付ける
 - `--overwrite` は `drive.file` スコープの仕様上、この CLI で作成したファイルにのみ有効。Drive UI 等で手動作成された同名ファイルは検出はされるが `files.update` が 403 を返すため、別名で新規作成するか Drive UI で削除してから再実行する
+  - `drive.file` スコープ: OAuth スコープの一種で、このアプリが作成したファイルにのみ書き込み権限を与える（他アプリ / Drive UI 作成ファイルは読み取り専用になる）。`drive.readonly` が同名検出のためのメタデータ参照、`drive.file` が create / update 実行、という役割分担
 
 ## エラー対処
 
