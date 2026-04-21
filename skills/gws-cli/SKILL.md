@@ -156,6 +156,7 @@ gws-cli drive upload ./proposal.pptx --overwrite --keep-forever
 - `drive upload` はマイドライブ専用（共有ドライブは未対応）
 - 同じフォルダ・同じ名前の対象に並行アップロードを走らせるとレース条件で重複作成になるため、Agent ワークフローでは逐次実行すること
 - バイナリファイル（PPTX/PDF など）の revision は標準で 30 日 / 100 件の早い方が上限。長期保存が必要なら `--keep-forever` を付ける
+- `--overwrite` は `drive.file` スコープの仕様上、この CLI で作成したファイルにのみ有効。Drive UI 等で手動作成された同名ファイルは検出はされるが `files.update` が 403 を返すため、別名で新規作成するか Drive UI で削除してから再実行する
 
 ## エラー対処
 
@@ -164,3 +165,4 @@ gws-cli drive upload ./proposal.pptx --overwrite --keep-forever
 - `File '...' already exists`: 同名ファイルが既存。`--overwrite` を付けるか `--name` で別名に変更
 - `Multiple files named '...' exist`: 同名ファイルが 2 件以上。Drive UI で整理してから再実行
 - `Folder ... is on a shared drive`: 共有ドライブのフォルダは未対応。マイドライブのフォルダ ID を指定
+- `--overwrite` 実行時に 403 Forbidden: 対象ファイルがこの CLI 以外（Drive UI 等）で作成されている可能性が高い。`drive.file` スコープは他ツール作成ファイルを更新できない。`--name` で別名にして新規作成するか Drive UI で削除してから再実行
