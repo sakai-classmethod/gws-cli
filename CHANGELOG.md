@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/sakai-classmethod/gws-cli/compare/gws-cli-v0.2.0...gws-cli-v0.2.1) (2026-04-21)
+
+
+### Documentation
+
+* gws-cli スキルを uv tool install 前提に更新 ([#6](https://github.com/sakai-classmethod/gws-cli/issues/6)) ([c88322f](https://github.com/sakai-classmethod/gws-cli/commit/c88322ffe64df4418321106ee7dde85dd3f1ee24))
+
 ## [0.2.0](https://github.com/sakai-classmethod/gws-cli/compare/gws-cli-v0.1.0...gws-cli-v0.2.0) (2026-04-17)
 
 
