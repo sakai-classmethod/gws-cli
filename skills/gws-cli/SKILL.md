@@ -11,8 +11,8 @@ description: |
   - Agent が生成した成果物（提案書・スライド・レポートなど）を Drive へ保存したいとき
 allowed-tools:
   - "Bash(gws-cli:*)"
-  - "mcp__claude_ai_Google_Calendar__gcal_list_events"
-  - "mcp__claude_ai_Google_Calendar__gcal_get_event"
+  - "mcp__claude_ai_Google_Calendar__list_events"
+  - "mcp__claude_ai_Google_Calendar__get_event"
 ---
 
 # gws-cli: Google Workspace CLI
@@ -54,7 +54,9 @@ gws-cli docs get <doc-id> [--format plain|md] [--section transcript|notes]
 挙動:
 - `--format` と `--section` は独立に適用される（先に format 変換 → 後からセクション抽出）。両方同時に指定可能
 - `doc-id` は Google Docs 形式（`mimeType: application/vnd.google-apps.document`）のファイルに限定。PDF / スプレッドシート / スライド等は `files.export` が失敗しエラー終了
-- `--section transcript|notes` 指定時、対応するマーカー（`📖 文字起こし` / `📝 メモ`）が本文に含まれない場合は全文を返す（silent fallback。エラーにはならない）
+- `--section transcript`: `📖 文字起こし` マーカー（含む）から本文末尾までを返す。後続に `📝 メモ` が続く場合もそれを含めて末尾まで返す
+- `--section notes`: `📝 メモ` マーカー（含む）から、本文中に `📖 文字起こし` が現れる場合はその直前まで、現れない場合は本文末尾まで返す（Meet ドキュメントはメモ → 文字起こしの順で生成される想定）
+- `--section transcript|notes` 指定時、対応するマーカーが本文に含まれない場合は全文を返す（silent fallback。エラーにはならず exit 0 / stderr への警告もなし）。fallback を呼び出し側で検知するには、出力本文の先頭 1 行目に該当マーカー（`📖 文字起こし` / `📝 メモ`）で始まるかを確認する（マーカー自体は出力に含まれる仕様のため、含まれていなければ fallback 発生）
 
 ### Drive アップロード
 
@@ -70,12 +72,17 @@ gws-cli drive upload <local-path> [--folder-id <folder-id>] [--name <drive-name>
 - 出力: JSON（`fileId`, `name`, `mimeType`, `webViewLink`, `action`）。`action` は `created` または `updated`
 
 挙動:
-- 同名 0 件: 新規作成（`--overwrite` を付けても害はない。新規作成パスに進む）
+- 同名 0 件: 新規作成（`--overwrite` を付けても害はない。新規作成パスに進み `action: created`。gws-cli が作成したファイルになるため、以後 `--overwrite` による revision 上書きが可能）
 - 同名 1 件 + `--overwrite`: revision 上書き（stderr に `previousRevisionId` を表示）
 - 同名 1 件 + `--overwrite` なし: エラー終了
 - 同名 2 件以上: エラー終了（`--overwrite` 有無にかかわらず）
 - 共有ドライブ配下のフォルダ指定: エラー終了（マイドライブ限定）
 - `--keep-forever` は `action` が `created`（新規作成の初回 revision）でも `updated`（上書き後の最新 revision）でも付与される
+
+`--overwrite` の運用指針:
+- ユーザーが「上書き」「最新版に差し替え」「アップデート」と明示したとき: 初回から `--overwrite` を付ける
+- ユーザーが「新規アップロード」「保存して」と依頼したとき: `--overwrite` を付けない。同名 1 件で `already exists` エラーが返ったら、既存ファイルを壊す変更になるためユーザーに確認してから `--overwrite` を付けて再実行する
+- `--overwrite` は「同名 1 件に対する破壊的な revision 更新」であり、予防的・思考停止で付けるのは避ける
 
 ## 典型的なワークフロー
 
@@ -86,7 +93,7 @@ gws-cli drive upload <local-path> [--folder-id <folder-id>] [--name <drive-name>
 Calendar MCP ツールでイベントを検索する。
 
 ```
-mcp__claude_ai_Google_Calendar__gcal_list_events
+mcp__claude_ai_Google_Calendar__list_events
   calendarId: "primary"
   timeMin: "2026-04-15T00:00:00"
   timeMax: "2026-04-15T23:59:59"
@@ -108,6 +115,8 @@ gws-cli calendar attachments <event-id>
 ```
 
 添付が複数件ある場合は、文字起こし/メモは Docs 形式で、`title` に「メモ」「Gemini」「議事録」「transcript」などが含まれる。`mimeType: application/vnd.google-apps.document` 以外（PDF など）は `docs get` に渡せないので除外する。候補を特定できない場合はユーザーに選択を確認する。
+
+添付が `[]`（0 件）の場合は以下の可能性をユーザーに確認する: (1) Meet の録画・文字起こし設定が有効でなかった、(2) 会議直後で Gemini のメモ生成がまだ完了していない（数分〜十数分のラグあり）、(3) 別カレンダーのイベントだった。
 
 #### Step 3: 文字起こしテキストを取得
 
@@ -156,8 +165,8 @@ gws-cli drive upload ./proposal.pptx --overwrite --keep-forever
 
 ## 注意事項
 
-- `--section transcript` を使うと「📖 文字起こし」セクション以降のみ抽出される（トークン節約に有効）
-- Meet の文字起こしと Gemini メモは同一ドキュメント内の別セクションに格納されている
+- Meet の文字起こしと Gemini メモは同一ドキュメント内の別セクションに格納されている（「Docs テキスト取得」節の挙動を参照）
+- トークン節約目的なら `--section transcript` / `--section notes` を使い、必要なセクションだけ抽出する
 - AI Agent が消費する場合は `--format plain`（デフォルト）が最もコンパクト
 - エラー時は stderr にメッセージ + exit 1
 - `uv tool install` でインストール済みのためどの作業ディレクトリからでも実行可能
@@ -169,7 +178,9 @@ gws-cli drive upload ./proposal.pptx --overwrite --keep-forever
 
 ## エラー対処
 
-- 403 Forbidden: ADC のスコープ不足。`gcloud auth application-default login --scopes=...` を再実行
+- 403 Forbidden: 主に 2 系統ある。切り分けは「同じ ADC で別コマンド（例: `gws-cli calendar attachments <event-id>`）が通るか」で判定
+  - 読み取り系コマンドも 403 → ADC のスコープ不足。`gcloud auth application-default login --scopes=...` を再実行
+  - 読み取り系は通るが `drive upload --overwrite` のみ 403 → `drive.file` スコープ制約（下記の `--overwrite` 実行時 403 を参照）
 - 404 Not Found: イベント ID / ドキュメント ID / フォルダ ID が不正
 - `File '...' already exists`: 同名ファイルが既存。`--overwrite` を付けるか `--name` で別名に変更
 - `Multiple files named '...' exist`: 同名ファイルが 2 件以上。Drive UI で整理してから再実行
