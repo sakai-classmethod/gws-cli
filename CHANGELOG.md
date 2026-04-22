@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.2](https://github.com/sakai-classmethod/gws-cli/compare/gws-cli-v0.2.1...gws-cli-v0.2.2) (2026-04-22)
+
+
+### Documentation
+
+* gws-cli スキルに drive upload と drive.file 制約を追記 ([#8](https://github.com/sakai-classmethod/gws-cli/issues/8)) ([def93d7](https://github.com/sakai-classmethod/gws-cli/commit/def93d7d6e77b87658d1323c12b520d5cfdab690))
+* **gws-cli:** clarify ambiguous skill behavior surfaced by empirical tuning ([#10](https://github.com/sakai-classmethod/gws-cli/issues/10)) ([3568027](https://github.com/sakai-classmethod/gws-cli/commit/35680273be329793a4149c5b14cbddaecaef5222))
+
 ## [0.2.1](https://github.com/sakai-classmethod/gws-cli/compare/gws-cli-v0.2.0...gws-cli-v0.2.1) (2026-04-21)
 
 
