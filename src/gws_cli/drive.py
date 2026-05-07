@@ -97,6 +97,31 @@ EXPORT_SHORTCUTS: dict[str, tuple[str, str]] = {
 MIME_TO_EXT: dict[str, str] = {mime: ext for mime, ext in EXPORT_SHORTCUTS.values()}
 
 
+STRIPPABLE_NAMING_SUFFIXES: frozenset[str] = frozenset(
+    {
+        ".md",
+        ".markdown",
+        ".txt",
+        ".rtf",
+        ".doc",
+        ".docx",
+        ".odt",
+        ".html",
+        ".htm",
+        ".csv",
+        ".tsv",
+        ".xls",
+        ".xlsx",
+        ".ods",
+        ".ppt",
+        ".pptx",
+        ".odp",
+        ".pdf",
+        ".epub",
+    }
+)
+
+
 def guess_mime_type(path: Path) -> str:
     mime, _ = mimetypes.guess_type(str(path))
     return mime or "application/octet-stream"
@@ -276,12 +301,19 @@ def sanitize_filename(name: str) -> str:
     return name.replace("/", "_").replace("\0", "_")
 
 
+def _strip_naming_suffix(name: str) -> str:
+    p = Path(name)
+    if p.suffix.lower() in STRIPPABLE_NAMING_SUFFIXES:
+        return name[: -len(p.suffix)]
+    return name
+
+
 def resolve_local_path(
     dest: str | None, drive_name: str, ext: str
 ) -> Path:
     safe_name = sanitize_filename(drive_name)
     if ext and not safe_name.lower().endswith(ext.lower()):
-        safe_name += ext
+        safe_name = _strip_naming_suffix(safe_name) + ext
 
     if dest is None or dest == "":
         return Path.cwd() / safe_name
@@ -440,7 +472,7 @@ def download_file(
         "headRevisionId": meta.get("headRevisionId"),
         "modifiedTime": meta.get("modifiedTime"),
         "md5Checksum": None if source == "export" else meta.get("md5Checksum"),
-        "size": meta.get("size"),
+        "size": None if source == "export" else meta.get("size"),
         "webViewLink": meta.get("webViewLink"),
     }
 

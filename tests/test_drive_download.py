@@ -232,6 +232,34 @@ def test_resolve_local_path_sanitizes_drive_name(tmp_path):
     assert p == sub / "a_b.docx"
 
 
+def test_resolve_local_path_strips_known_naming_suffix(tmp_path):
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    p = resolve_local_path(str(sub), "report.md", ".pdf")
+    assert p == sub / "report.pdf"
+
+
+def test_resolve_local_path_strips_docx_when_exporting_to_pdf(tmp_path):
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    p = resolve_local_path(str(sub), "summary.docx", ".pdf")
+    assert p == sub / "summary.pdf"
+
+
+def test_resolve_local_path_keeps_unknown_suffix(tmp_path):
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    p = resolve_local_path(str(sub), "v1.0 plan", ".pdf")
+    assert p == sub / "v1.0 plan.pdf"
+
+
+def test_resolve_local_path_keeps_already_correct_extension(tmp_path):
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    p = resolve_local_path(str(sub), "report.pdf", ".pdf")
+    assert p == sub / "report.pdf"
+
+
 # --- download_file: blob path ---
 
 
@@ -319,6 +347,8 @@ def test_download_file_native_uses_export_media_with_default_mime(
         "id": "doc1",
         "name": "Project Plan",
         "mimeType": "application/vnd.google-apps.document",
+        "size": "1234",
+        "md5Checksum": "abc",
     }
     service = _make_service_for_download(meta, export_body=b"DOCX-BYTES")
     sub = tmp_path / "out"
@@ -338,6 +368,7 @@ def test_download_file_native_uses_export_media_with_default_mime(
     assert result["source"] == "export"
     assert result["exportMime"].endswith("wordprocessingml.document")
     assert result["md5Checksum"] is None  # export should always be null
+    assert result["size"] is None  # source size doesn't apply to export output
     export_kwargs = service.files.return_value.export_media.call_args.kwargs
     assert export_kwargs["fileId"] == "doc1"
     assert "wordprocessingml" in export_kwargs["mimeType"]
