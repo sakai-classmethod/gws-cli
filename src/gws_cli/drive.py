@@ -55,8 +55,7 @@ NATIVE_DEFAULT_EXPORT: dict[str, tuple[str, str]] = {
         ".xlsx",
     ),
     "application/vnd.google-apps.presentation": (
-        "application/vnd.openxmlformats-officedocument."
-        "presentationml.presentation",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         ".pptx",
     ),
     "application/vnd.google-apps.drawing": ("image/png", ".png"),
@@ -78,8 +77,7 @@ EXPORT_SHORTCUTS: dict[str, tuple[str, str]] = {
         ".xlsx",
     ),
     "pptx": (
-        "application/vnd.openxmlformats-officedocument."
-        "presentationml.presentation",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         ".pptx",
     ),
     "png": ("image/png", ".png"),
@@ -261,14 +259,11 @@ def check_rejected_mime(mime: str) -> None:
         )
     if mime.startswith(("video/", "audio/")):
         raise DriveDownloadError(
-            f"Cannot download mimeType '{mime}': "
-            f"video/audio downloads are out of scope"
+            f"Cannot download mimeType '{mime}': video/audio downloads are out of scope"
         )
 
 
-def resolve_export(
-    format_arg: str | None, source_mime: str
-) -> tuple[str, str] | None:
+def resolve_export(format_arg: str | None, source_mime: str) -> tuple[str, str] | None:
     if not is_native_mime(source_mime):
         if format_arg is not None:
             raise DriveDownloadError(
@@ -308,9 +303,7 @@ def _strip_naming_suffix(name: str) -> str:
     return name
 
 
-def resolve_local_path(
-    dest: str | None, drive_name: str, ext: str
-) -> Path:
+def resolve_local_path(dest: str | None, drive_name: str, ext: str) -> Path:
     safe_name = sanitize_filename(drive_name)
     if ext and not safe_name.lower().endswith(ext.lower()):
         safe_name = _strip_naming_suffix(safe_name) + ext
@@ -409,8 +402,7 @@ def download_file(
         local_path = resolve_local_path(dest, name, ext)
         if local_path.exists() and not overwrite:
             raise DriveDownloadError(
-                f"Local file already exists: {local_path}. "
-                f"Pass --overwrite to replace."
+                f"Local file already exists: {local_path}. Pass --overwrite to replace."
             )
         if ext and local_path.suffix and local_path.suffix.lower() != ext.lower():
             print(
@@ -422,9 +414,7 @@ def download_file(
     if source == "export":
         request = service.files().export_media(fileId=file_id, mimeType=export_mime)
     else:
-        request = service.files().get_media(
-            fileId=file_id, supportsAllDrives=True
-        )
+        request = service.files().get_media(fileId=file_id, supportsAllDrives=True)
 
     try:
         if local_path is None:

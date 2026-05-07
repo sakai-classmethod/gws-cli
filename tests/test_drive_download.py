@@ -611,9 +611,7 @@ def test_download_file_passes_through_other_http_errors(tmp_path, monkeypatch):
 # --- download_file: extension mismatch warning ---
 
 
-def test_download_file_warns_on_extension_mismatch(
-    tmp_path, patch_stream, capsys
-):
+def test_download_file_warns_on_extension_mismatch(tmp_path, patch_stream, capsys):
     meta = {
         "id": "doc1",
         "name": "Plan",
