@@ -1,7 +1,7 @@
 ---
 name: gws-cli
 description: |
-  Google Workspace リソース（Calendar 添付ファイル、Google Docs テキスト、マイドライブへのアップロード）を扱う CLI スキル。
+  Google Workspace リソース（Calendar 添付ファイル、Google Docs テキスト、マイドライブへのアップロード、Drive ファイルのダウンロード）を扱う CLI スキル。
   以下の場面で使用する:
   - 会議の文字起こしを取得したいとき（「文字起こし取って」「トランスクリプト取得」「議事録の元データ」）
   - Calendar イベントの添付ファイルを確認したいとき（「添付ファイル一覧」「Meet のドキュメント」）
@@ -9,6 +9,7 @@ description: |
   - Meet の会議内容を要約・分析する前段階として元データが必要なとき
   - ローカルファイルをマイドライブにアップロードしたいとき（「Drive に上げて」「PPTX をマイドライブに保存」「生成した PDF をアップロード」）
   - Agent が生成した成果物（提案書・スライド・レポートなど）を Drive へ保存したいとき
+  - Drive 上のファイルをローカルにダウンロードしたいとき（「Drive から取ってきて」「PPTX をダウンロード」「Doc を docx で保存」）
 allowed-tools:
   - "Bash(gws-cli:*)"
   - "mcp__claude_ai_Google_Calendar__gcal_list_events"
@@ -19,7 +20,7 @@ allowed-tools:
 
 Google Workspace のリソースを読み書きする CLI ツール。
 
-- 読み取り: Calendar 添付ファイル / Google Docs テキスト（Meet 文字起こし取得など）
+- 読み取り: Calendar 添付ファイル / Google Docs テキスト（Meet 文字起こし取得など） / Drive ファイルダウンロード
 - 書き込み: ローカルファイルをマイドライブへアップロード（Agent 生成物の保存など）
 
 ## 前提条件
@@ -55,6 +56,35 @@ gws-cli docs get <doc-id> [--format plain|md] [--section transcript|notes]
 - `--format` と `--section` は独立に適用される（先に format 変換 → 後からセクション抽出）。両方同時に指定可能
 - `doc-id` は Google Docs 形式（`mimeType: application/vnd.google-apps.document`）のファイルに限定。PDF / スプレッドシート / スライド等は `files.export` が失敗しエラー終了
 - `--section transcript|notes` 指定時、対応するマーカー（`📖 文字起こし` / `📝 メモ`）が本文に含まれない場合は全文を返す（silent fallback。エラーにはならない）
+
+### Drive ダウンロード
+
+```bash
+gws-cli drive download <file-id> [<dest>] [--export <format>] [--overwrite]
+```
+
+- `file-id`: Drive のファイル ID（必須）
+- `dest`: 保存先（省略時はカレントディレクトリ、ディレクトリ指定で配下に Drive 名+拡張子で保存、`-` で stdout）
+- `--export`: Google native（Docs/Sheets/Slides/Drawings）のエクスポート形式
+  - shortcut: `pdf`, `docx`, `xlsx`, `pptx`, `png`, `jpeg`, `csv`, `txt`, `rtf`, `odt`, `ods`, `epub`, `tsv`
+  - MIME 直指定可（例: `--export application/pdf`）
+  - 既定: Docs→docx / Sheets→xlsx / Slides→pptx / Drawings→png
+- `--overwrite`: 既存ローカルファイルがあれば上書き
+- 出力: ファイル保存時は JSON を stdout、`-` の場合は bytes を stdout / JSON を stderr
+
+挙動:
+
+- Google native は `files.export` 経由でエクスポート、それ以外は `files.get_media` で chunked 取得
+- 共有ドライブ上のファイルにも対応（読み取りのみ）
+- 拒否される mimeType: フォルダ / shortcut / form / site / `audio/*` / `video/*`
+- `files.export` の 10MB 出力上限に該当する場合は専用エラーで Drive UI / Takeout を案内
+- 書き込みは temp ファイル → atomic replace（途中失敗時に半端ファイルを残さない）
+
+`docs get` との使い分け:
+
+- Meet 議事録の `📖 文字起こし` / `📝 メモ` を section 抽出 / md 変換したい → `docs get`
+- Google Docs / Sheets / Slides を docx/xlsx/pptx などのバイナリで保存したい → `drive download --export ...`
+- PDF / PPTX / 画像など Drive 上のバイナリをそのまま取得したい → `drive download`
 
 ### Drive アップロード
 
@@ -124,6 +154,26 @@ gws-cli docs get <fileId>
 # Markdown 形式で取得
 gws-cli docs get <fileId> --format md --section transcript
 ```
+
+### ワークフロー B': Drive のファイルをローカルへ取得
+
+```bash
+# バイナリ（PDF / PPTX / 画像など）はそのままダウンロード
+gws-cli drive download <fileId>
+gws-cli drive download <fileId> ./out/
+gws-cli drive download <fileId> ./report.pdf
+
+# Google Docs を docx で保存（既定）
+gws-cli drive download <docId>
+
+# Google Docs を PDF で保存
+gws-cli drive download <docId> --export pdf
+
+# Sheets を CSV で stdout に流す
+gws-cli drive download <sheetId> - --export csv
+```
+
+`fileId` は `calendar attachments` の出力や Drive UI の URL から取得できる。
 
 ### ワークフロー B: Agent の生成物をマイドライブへアップロード
 
