@@ -1,6 +1,6 @@
 [project]
 name = "gws-cli"
-version = "0.2.1"
+version = "0.3.0"
 description = "CLI for reading Google Workspace resources and uploading files to My Drive"
 readme = "README.md"
 license = "MIT"
@@ -10,6 +10,7 @@ authors = [
 ]
 requires-python = ">=3.13"
 dependencies = [
+    "beautifulsoup4>=4.14",
     "google-api-python-client>=2.194.0",
     "google-auth>=2.49.2",
     "markdownify>=1.2.2",
@@ -34,3 +35,6 @@ target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["typer.Argument", "typer.Option"]

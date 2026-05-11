@@ -1,7 +1,7 @@
 ---
 name: gws-cli
 description: |
-  Google Workspace リソース（Calendar 添付ファイル、Google Docs テキスト、マイドライブへのアップロード／ダウンロード）を扱う CLI スキル。
+  Google Workspace リソース（Calendar イベント取得・検索・一覧、添付ファイル、Google Docs テキスト、マイドライブへのアップロード／ダウンロード）を扱う CLI スキル。
   以下の場面で使用する（「Drive」「ドライブ」「マイドライブ」「GDrive」「gdrive」のいずれの表記でも該当する）:
   - ローカルファイルをマイドライブにアップロードしたいとき
     - トリガー例: 「Drive に上げて」「Drive にアップ」「Drive にアップして」「Drive に up」「Drive に up して」「ドライブに上げて」「ドライブにアップして」「マイドライブに保存」「マイドライブに置いて」「マイドライブに入れて」「マイドライブに投げて」「マイドライブにアップ」「PPTX をマイドライブに」「生成した PDF をアップロード」「成果物を Drive に投げて」「Drive にあげといて」「Drive に置いといて」「Drive に置いて」「Drive にぶち込んで」「Drive に放り込んで」「Drive に共有」「Drive に上げる」「Drive にあげる」「アップロード」「アップして」「up して」「上げて」「あげて」「あげる」「保存しといて」（直前/直後に「Drive」「ドライブ」「マイドライブ」が含まれる場合）
@@ -9,21 +9,21 @@ description: |
   - Drive 上のファイルをローカルにダウンロードしたいとき
     - トリガー例: 「Drive から取ってきて」「Drive から落として」「Drive から DL」「Drive から download」「PPTX をダウンロード」「Doc を docx で保存」「ドライブから取得」「ドライブから持ってきて」「ローカルに落として」「fileId から取得」「最新版に差し替え」「Drive のファイルをローカルに」
   - 会議の文字起こしを取得したいとき（「文字起こし取って」「トランスクリプト取得」「議事録の元データ」「Meet の文字起こし」「録音の文字化」）
-  - Calendar イベントの添付ファイルを確認したいとき（「添付ファイル一覧」「Meet のドキュメント」「カレンダー添付」）
+  - Calendar イベントの添付ファイル / 説明欄に貼られた Drive リンクを抽出したいとき（「添付ファイル一覧」「ミーティングの資料リンクを集めて」「Meet のドキュメント」「カレンダー添付」）
+  - 期間とキーワードからカレンダーイベントを検索したいとき（「来週の MTG 一覧」「『提案書』を含む予定」）
+  - 自分がアクセスできるカレンダーの一覧を確認したいとき（「他のカレンダー id を調べて」）
   - Google Docs の本文をテキストで取得したいとき（「Docs の中身を取得」「ドキュメント読んで」「Doc の本文」「Doc から取って」「Docs から取って」「Docs の本文取って」「Google ドキュメントの内容」）
   - Meet の会議内容を要約・分析する前段階として元データが必要なとき
   注: 口語的・短縮形・カタカナ/英語混在（「up」「DL」「あげて」「落として」「投げて」「放り込んで」）でも、文脈に「Drive」「ドライブ」「マイドライブ」「Docs」「Meet」「Calendar」「Workspace」のいずれかが含まれていれば必ずこの skill を呼ぶ。
 allowed-tools:
   - "Bash(gws-cli:*)"
-  - "mcp__claude_ai_Google_Calendar__list_events"
-  - "mcp__claude_ai_Google_Calendar__get_event"
 ---
 
 # gws-cli: Google Workspace CLI
 
-Google Workspace のリソースを読み書きする CLI ツール。
+Google Workspace のリソースを読み書きする CLI ツール。Calendar / Docs / Drive を 1 つのコマンドラインから扱える。
 
-- 読み取り: Calendar 添付ファイル / Google Docs テキスト（Meet 文字起こし取得など） / Drive ファイルダウンロード
+- 読み取り: Calendar イベント (添付 + 説明文の Drive リンク抽出含む) / Calendar 一覧 / Google Docs テキスト / Drive ファイルダウンロード
 - 書き込み: ローカルファイルをマイドライブへアップロード（Agent 生成物の保存など）
 
 ## 前提条件
@@ -34,16 +34,82 @@ Google Workspace のリソースを読み書きする CLI ツール。
 
 ## コマンド一覧
 
-### Calendar 添付ファイル取得
+### Calendar イベント取得（単発）
 
 ```bash
-gws-cli calendar attachments <event-id> [--calendar-id <calendar-id>]
+gws-cli calendar event get <event-id> [--calendar-id <calendar-id>]
 ```
 
 - `event-id`: Google Calendar のイベント ID
 - `--calendar-id`: カレンダー ID（デフォルト: `primary`）
-- 出力: JSON 配列（`fileId`, `title`, `fileUrl`, `mimeType`）
-- 添付なしの場合は `[]` を返す（exit 0）
+- 出力: Calendar API events.get の生レスポンス JSON に、追加フィールドとして必ず以下を付与
+  - `attachments`: API の `attachments` 配列（API 上は省略され得るが本コマンドは常に空配列以上を返す）
+  - `links`: 後述の Drive リンクスキーマ（dedup 済み）
+
+### Calendar イベント検索（範囲）
+
+```bash
+gws-cli calendar event list \
+  [--calendar-id <id>] \
+  [--time-min <iso8601>] [--time-max <iso8601>] \
+  [--q <query>] [--event-type <type>]... \
+  [--order-by startTime|updated] \
+  [--page-size <n>] [--page-token <token>] \
+  [--time-zone <iana-tz>] \
+  [--show-deleted] \
+  [--all-pages]
+```
+
+- 出力: `{"items": [...], "nextPageToken"?: "...", "nextSyncToken"?: "..."}` の envelope JSON
+- 各 `items[i]` は events.list の生 event に `attachments` と `links` を加えたもの（`event get` と同形式）
+- `--all-pages` 指定時は内部でページを連結し、`items` に全件集約。`nextPageToken` は省略
+- `--all-pages` には `--time-min` と `--time-max` の両方が必須（未指定なら exit 2 で拒否、長期レンジ全件取得の事故防止）
+- `singleEvents=true` 相当で動作（繰り返しイベントは個別インスタンスに展開済み）。recurring master を見たい場合は本 CLI ではなく Drive UI または別 API を使う
+
+### links フィールドのスキーマ
+
+Calendar イベント (`event get` / `event list` の各 item) に付与される `links` は以下の形:
+
+```json
+{
+  "url": "https://docs.google.com/document/d/.../edit",
+  "fileId": "1aBcD...",
+  "mimeType": "application/vnd.google-apps.document",
+  "title": "Gemini によるメモ",
+  "sources": ["event.attachments", "event.description"],
+  "sourceUrls": ["https://docs.google.com/document/d/.../edit"]
+}
+```
+
+挙動:
+
+- `fileId` で dedup する。`event.attachments` と `event.description` の両方に同じ Doc が現れた場合は 1 件にまとめ、`sources` に両方を記録
+- `sourceUrls` は同じ Doc に対する URL バリエーション (`/edit?usp=meet` と `/edit` 等) を全て保持
+- `title` は attachment 由来ならその `title`、description 由来は anchor タグのテキスト（URL と同一なら `null`）
+- `mimeType` は attachment 由来ならその値、URL のみ由来なら URL prefix から推定
+  - `docs.google.com/{document,spreadsheets,presentation,forms,drawings}/d/...` → 各 native MIME
+  - `drive.google.com/drive/folders/...` → `application/vnd.google-apps.folder`
+  - `drive.google.com/file/d/...` → `null`（URL からは MIME を確定できない）
+- 削除済み Drive 参照（`fileId` を Drive で引くと 404）も `links` に含める。Calendar 上に残っている事実を保持する仕様で、Drive の生死検証はしない
+- description は HTML / 平文のどちらにも耐性あり: anchor タグ抽出 + `html.unescape()` 済みテキストの URL regex 抽出 の二段構え
+
+### Calendar 一覧
+
+```bash
+gws-cli calendar calendars
+```
+
+- 出力: `{"items": [...]}` envelope。`items[i]` は CalendarList resource（`id`, `summary`, `accessRole` など）
+- `event get` / `event list` の `--calendar-id` に渡す ID をここで調べられる
+
+### Calendar 添付ファイル取得 (deprecated)
+
+```bash
+gws-cli calendar attachments <event-id> [--calendar-id <id>]
+```
+
+- 互換維持のために残しているが deprecated。実行時 stderr に警告を出力する
+- 次メジャーで削除予定。新規利用は `gws-cli calendar event get` に統一する
 
 ### Docs テキスト取得
 
@@ -51,11 +117,12 @@ gws-cli calendar attachments <event-id> [--calendar-id <calendar-id>]
 gws-cli docs get <doc-id> [--format plain|md] [--section transcript|notes]
 ```
 
-- `doc-id`: Google Docs のドキュメント ID（添付ファイルの `fileId`）
+- `doc-id`: Google Docs のドキュメント ID（`event get` / `event list` の `links[].fileId` を渡す）
 - `--format`: 出力形式（デフォルト: `plain`、`md` で Markdown 変換）
 - `--section`: セクション抽出（`transcript` で文字起こしのみ、`notes` でメモのみ）
 
 挙動:
+
 - `--format` と `--section` は独立に適用される（先に format 変換 → 後からセクション抽出）。両方同時に指定可能
 - `doc-id` は Google Docs 形式（`mimeType: application/vnd.google-apps.document`）のファイルに限定。PDF / スプレッドシート / スライド等は `files.export` が失敗しエラー終了
 - `--section transcript`: `📖 文字起こし` マーカー（含む）から本文末尾までを返す。後続に `📝 メモ` が続く場合もそれを含めて末尾まで返す
@@ -108,6 +175,7 @@ gws-cli drive upload <local-path> [--folder-id <folder-id>] [--name <drive-name>
 - 出力: JSON（`fileId`, `name`, `mimeType`, `webViewLink`, `action`）。`action` は `created` または `updated`
 
 挙動:
+
 - 同名 0 件: 新規作成（`--overwrite` を付けても害はない。新規作成パスに進み `action: created`。gws-cli が作成したファイルになるため、以後 `--overwrite` による revision 上書きが可能）
 - 同名 1 件 + `--overwrite`: revision 上書き（stderr に `previousRevisionId` を表示）
 - 同名 1 件 + `--overwrite` なし: エラー終了
@@ -116,43 +184,42 @@ gws-cli drive upload <local-path> [--folder-id <folder-id>] [--name <drive-name>
 - `--keep-forever` は `action` が `created`（新規作成の初回 revision）でも `updated`（上書き後の最新 revision）でも付与される
 
 `--overwrite` の運用指針:
+
 - ユーザーが「上書き」「最新版に差し替え」「アップデート」と明示したとき: 初回から `--overwrite` を付ける
 - ユーザーが「新規アップロード」「保存して」と依頼したとき: `--overwrite` を付けない。同名 1 件で `already exists` エラーが返ったら、既存ファイルを壊す変更になるためユーザーに確認してから `--overwrite` を付けて再実行する
 - `--overwrite` は「同名 1 件に対する破壊的な revision 更新」であり、予防的・思考停止で付けるのは避ける
 
 ## 典型的なワークフロー
 
-### ワークフロー A: Meet の文字起こしを取得
+### ワークフロー A: Meet の文字起こしを取得（gws-cli 完結）
 
-#### Step 1: イベント ID を特定
-
-Calendar MCP ツールでイベントを検索する。
-
-```
-mcp__claude_ai_Google_Calendar__list_events
-  calendarId: "primary"
-  timeMin: "2026-04-15T00:00:00"
-  timeMax: "2026-04-15T23:59:59"
-  timeZone: "Asia/Tokyo"
-  q: "会議名キーワード"
-```
-
-レスポンスの `events[].id` がイベント ID。
-
-#### Step 2: 添付ファイルの fileId を取得
+#### Step 1: イベントを検索して ID を特定
 
 ```bash
-gws-cli calendar attachments <event-id>
+gws-cli calendar event list \
+  --time-min 2026-04-15T00:00:00+09:00 \
+  --time-max 2026-04-15T23:59:59+09:00 \
+  --time-zone Asia/Tokyo \
+  --q '会議名キーワード'
 ```
 
-レスポンス例:
-```json
-[{"fileId": "1aBcD...", "title": "Gemini によるメモ", "fileUrl": "https://docs.google.com/...", "mimeType": "application/vnd.google-apps.document"}]
+レスポンスの `items[].id` がイベント ID。target が見つからない場合は `--q` を外して期間内全件を確認する。複数候補が出たら `summary` / `start` をユーザーに確認する。
+
+#### Step 2: イベント詳細と Doc リンクを取得
+
+```bash
+gws-cli calendar event get <event-id>
 ```
 
-添付が複数件ある場合は、文字起こし/メモは Docs 形式で、`title` に「メモ」「Gemini」「議事録」「transcript」などが含まれる。`mimeType: application/vnd.google-apps.document` 以外（PDF など）は `docs get` に渡せないので除外する。候補を特定できない場合はユーザーに選択を確認する。
+`links` フィールドに Drive 由来のリンクが dedup 済みで並ぶ。Meet の Gemini メモ Doc は通常以下の特徴を持つ:
 
-添付が `[]`（0 件）の場合は以下の可能性をユーザーに確認する: (1) Meet の録画・文字起こし設定が有効でなかった、(2) 会議直後で Gemini のメモ生成がまだ完了していない（数分〜十数分のラグあり）、(3) 別カレンダーのイベントだった。
+- `mimeType: application/vnd.google-apps.document`
+- `title: "Gemini によるメモ"` または `title: "メモ - 「<会議名>」"`
+- `sources: ["event.attachments"]`
+
+複数候補があるとき (例: Recording mp4 + メモ Doc + 議題 Doc) は `mimeType` で絞り、`title` / `sources` で判別する。`mimeType` が `application/vnd.google-apps.document` 以外（PDF, video/mp4 等）は `docs get` には渡せないので除外する。
+
+`links: []`（0 件）の場合は以下の可能性をユーザーに確認する: (1) Meet の録画・文字起こし設定が有効でなかった、(2) 会議直後で Gemini のメモ生成がまだ完了していない（数分〜十数分のラグあり）、(3) 別カレンダーのイベントだった（その場合は `gws-cli calendar calendars` で別カレンダー ID を調べ、`--calendar-id` を指定して再実行）。
 
 #### Step 3: 文字起こしテキストを取得
 
@@ -191,7 +258,7 @@ gws-cli drive download <sheetId> - --export csv
 gws-cli drive download <fileId> ./out/proposal.pptx --overwrite
 ```
 
-`fileId` は `calendar attachments` の出力や Drive UI の URL から取得できる。
+`fileId` は `calendar event get` の `links[].fileId` や Drive UI の URL から取得できる。
 
 ### ワークフロー B: Agent の生成物をマイドライブへアップロード
 
@@ -222,12 +289,28 @@ gws-cli drive upload ./proposal.pptx --overwrite --keep-forever
 }
 ```
 
+### ワークフロー C: イベントから Drive リンクを一括収集
+
+説明欄に Drive フォルダや Doc を貼り込む運用 (定例の議事録置き場リンクなど) のイベントから、参照ファイルを構造化して取り出す。
+
+```bash
+gws-cli calendar event get <event-id> | \
+  uv run python -c "
+import json, sys
+event = json.load(sys.stdin)
+for link in event['links']:
+    print(link['fileId'], link['mimeType'] or '', '|', link.get('title') or link['url'])
+"
+```
+
+`links` の各エントリは `sources` でどこから拾われたか (attachment / description) を確認できる。Drive で削除済みのファイルも残るので、404 を許容する側で実体取得を試みる必要がある。
+
 ## 注意事項
 
 - Meet の文字起こしと Gemini メモは同一ドキュメント内の別セクションに格納されている（「Docs テキスト取得」節の挙動を参照）
 - トークン節約目的なら `--section transcript` / `--section notes` を使い、必要なセクションだけ抽出する
 - フォーマット選択: ユーザーが Markdown を明示的に要求したら `--format md` を優先する。明示要求がなく Agent 内部処理のみで使う場合は `--format plain`（デフォルト）がコンパクトでトークン効率が良い
-- エラー時は stderr にメッセージ + exit 1
+- エラー時は stderr にメッセージ + exit 1（`event list --all-pages` の引数不足は exit 2）
 - `uv tool install` でインストール済みのためどの作業ディレクトリからでも実行可能
 - `drive upload` はマイドライブ専用（共有ドライブは未対応）
 - 同じフォルダ・同じ名前の対象に並行アップロードを走らせるとレース条件で重複作成になるため、Agent ワークフローでは逐次実行すること
@@ -237,11 +320,13 @@ gws-cli drive upload ./proposal.pptx --overwrite --keep-forever
 
 ## エラー対処
 
-- 403 Forbidden: 主に 2 系統ある。切り分けは「同じ ADC で別コマンド（例: `gws-cli calendar attachments <event-id>`）が通るか」で判定
+- 403 Forbidden: 主に 2 系統ある。切り分けは「同じ ADC で別コマンド（例: `gws-cli calendar calendars`）が通るか」で判定
   - 読み取り系コマンドも 403 → ADC のスコープ不足。`gcloud auth application-default login --scopes=...` を再実行
   - 読み取り系は通るが `drive upload --overwrite` のみ 403 → `drive.file` スコープ制約（下記の `--overwrite` 実行時 403 を参照）
-- 404 Not Found: イベント ID / ドキュメント ID / フォルダ ID が不正
+- 404 Not Found: イベント ID / ドキュメント ID / フォルダ ID が不正、または `--calendar-id` を間違えている
+- `event list --all-pages` で exit 2: `--time-min` と `--time-max` の両方を指定する。長期レンジ全件取得の事故防止のための仕様
 - `File '...' already exists`: 同名ファイルが既存。`--overwrite` を付けるか `--name` で別名に変更
 - `Multiple files named '...' exist`: 同名ファイルが 2 件以上。Drive UI で整理してから再実行
 - `Folder ... is on a shared drive`: 共有ドライブのフォルダは未対応。マイドライブのフォルダ ID を指定
 - `--overwrite` 実行時に 403 Forbidden: 対象ファイルがこの CLI 以外（Drive UI 等）で作成されている可能性が高い。`drive.file` スコープは他ツール作成ファイルを更新できない。`--name` で別名にして新規作成するか Drive UI で削除してから再実行
+- `'calendar attachments' is deprecated` warning: 新コマンド `gws-cli calendar event get` に切り替える。挙動はほぼ上位互換 (event 全体 + `links` フィールド付き)

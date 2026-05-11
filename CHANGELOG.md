@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.0](https://github.com/sakai-classmethod/gws-cli/compare/gws-cli-v0.2.1...gws-cli-v0.3.0) (2026-05-07)
+
+
+### Features
+
+* **calendar:** add event get/list/calendars with Drive link extraction ([#14](https://github.com/sakai-classmethod/gws-cli/issues/14)) ([05de2e1](https://github.com/sakai-classmethod/gws-cli/commit/05de2e125fad3a55aed59aebb7e5663fd34f22fb))
+* drive download コマンドで Drive ファイルのローカルダウンロードを追加 ([#13](https://github.com/sakai-classmethod/gws-cli/issues/13)) ([a2f0d5b](https://github.com/sakai-classmethod/gws-cli/commit/a2f0d5bf9eba3e11fbc2b2db9c35d5496ca0ff84))
+
+
+### Documentation
+
+* gws-cli スキルに drive upload と drive.file 制約を追記 ([#8](https://github.com/sakai-classmethod/gws-cli/issues/8)) ([def93d7](https://github.com/sakai-classmethod/gws-cli/commit/def93d7d6e77b87658d1323c12b520d5cfdab690))
+* **gws-cli:** clarify ambiguous skill behavior surfaced by empirical tuning ([#10](https://github.com/sakai-classmethod/gws-cli/issues/10)) ([3568027](https://github.com/sakai-classmethod/gws-cli/commit/35680273be329793a4149c5b14cbddaecaef5222))
+
 ## [0.2.1](https://github.com/sakai-classmethod/gws-cli/compare/gws-cli-v0.2.0...gws-cli-v0.2.1) (2026-04-21)
 
 
