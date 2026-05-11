@@ -1,15 +1,18 @@
 ---
 name: gws-cli
 description: |
-  Google Workspace リソース（Calendar 添付ファイル、Google Docs テキスト、マイドライブへのアップロード、Drive ファイルのダウンロード）を扱う CLI スキル。
-  以下の場面で使用する:
-  - 会議の文字起こしを取得したいとき（「文字起こし取って」「トランスクリプト取得」「議事録の元データ」）
-  - Calendar イベントの添付ファイルを確認したいとき（「添付ファイル一覧」「Meet のドキュメント」）
-  - Google Docs の本文をテキストで取得したいとき（「Docs の中身を取得」「ドキュメント読んで」）
+  Google Workspace リソース（Calendar 添付ファイル、Google Docs テキスト、マイドライブへのアップロード／ダウンロード）を扱う CLI スキル。
+  以下の場面で使用する（「Drive」「ドライブ」「マイドライブ」「GDrive」「gdrive」のいずれの表記でも該当する）:
+  - ローカルファイルをマイドライブにアップロードしたいとき
+    - トリガー例: 「Drive に上げて」「Drive にアップ」「Drive にアップして」「Drive に up」「Drive に up して」「ドライブに上げて」「ドライブにアップして」「マイドライブに保存」「マイドライブに置いて」「マイドライブに入れて」「マイドライブに投げて」「マイドライブにアップ」「PPTX をマイドライブに」「生成した PDF をアップロード」「成果物を Drive に投げて」「Drive にあげといて」「Drive に置いといて」「Drive に置いて」「Drive にぶち込んで」「Drive に放り込んで」「Drive に共有」「Drive に上げる」「Drive にあげる」「アップロード」「アップして」「up して」「上げて」「あげて」「あげる」「保存しといて」（直前/直後に「Drive」「ドライブ」「マイドライブ」が含まれる場合）
+  - Agent が生成した成果物（提案書・スライド・レポート・議事録・PPTX・PDF・Markdown など）を Drive へ保存したいとき（「成果物を Drive に」「結果を上げて」「resulting file を Drive に」など、生成→保存の流れが示唆されたら必ず該当）
+  - Drive 上のファイルをローカルにダウンロードしたいとき
+    - トリガー例: 「Drive から取ってきて」「Drive から落として」「Drive から DL」「Drive から download」「PPTX をダウンロード」「Doc を docx で保存」「ドライブから取得」「ドライブから持ってきて」「ローカルに落として」「fileId から取得」「最新版に差し替え」「Drive のファイルをローカルに」
+  - 会議の文字起こしを取得したいとき（「文字起こし取って」「トランスクリプト取得」「議事録の元データ」「Meet の文字起こし」「録音の文字化」）
+  - Calendar イベントの添付ファイルを確認したいとき（「添付ファイル一覧」「Meet のドキュメント」「カレンダー添付」）
+  - Google Docs の本文をテキストで取得したいとき（「Docs の中身を取得」「ドキュメント読んで」「Doc の本文」「Doc から取って」「Docs から取って」「Docs の本文取って」「Google ドキュメントの内容」）
   - Meet の会議内容を要約・分析する前段階として元データが必要なとき
-  - ローカルファイルをマイドライブにアップロードしたいとき（「Drive に上げて」「PPTX をマイドライブに保存」「生成した PDF をアップロード」）
-  - Agent が生成した成果物（提案書・スライド・レポートなど）を Drive へ保存したいとき
-  - Drive 上のファイルをローカルにダウンロードしたいとき（「Drive から取ってきて」「PPTX をダウンロード」「Doc を docx で保存」）
+  注: 口語的・短縮形・カタカナ/英語混在（「up」「DL」「あげて」「落として」「投げて」「放り込んで」）でも、文脈に「Drive」「ドライブ」「マイドライブ」「Docs」「Meet」「Calendar」「Workspace」のいずれかが含まれていれば必ずこの skill を呼ぶ。
 allowed-tools:
   - "Bash(gws-cli:*)"
   - "mcp__claude_ai_Google_Calendar__list_events"
@@ -57,7 +60,7 @@ gws-cli docs get <doc-id> [--format plain|md] [--section transcript|notes]
 - `doc-id` は Google Docs 形式（`mimeType: application/vnd.google-apps.document`）のファイルに限定。PDF / スプレッドシート / スライド等は `files.export` が失敗しエラー終了
 - `--section transcript`: `📖 文字起こし` マーカー（含む）から本文末尾までを返す。後続に `📝 メモ` が続く場合もそれを含めて末尾まで返す
 - `--section notes`: `📝 メモ` マーカー（含む）から、本文中に `📖 文字起こし` が現れる場合はその直前まで、現れない場合は本文末尾まで返す（Meet ドキュメントはメモ → 文字起こしの順で生成される想定）
-- `--section transcript|notes` 指定時、対応するマーカーが本文に含まれない場合は全文を返す（silent fallback。エラーにはならず exit 0 / stderr への警告もなし）。fallback を呼び出し側で検知するには、出力本文の先頭 1 行目に該当マーカー（`📖 文字起こし` / `📝 メモ`）で始まるかを確認する（マーカー自体は出力に含まれる仕様のため、含まれていなければ fallback 発生）
+- `--section transcript|notes` 指定時、対応するマーカーが本文に含まれない場合は全文を返す（silent fallback。エラーにはならず exit 0 / stderr への警告もなし）。fallback を呼び出し側で検知するには、出力本文の先頭 1 行目が該当マーカー（`📖 文字起こし` / `📝 メモ`）で始まるかを確認する（マーカー自体は出力に含まれる仕様のため、含まれていなければ fallback 発生）。fallback が発生した場合は「該当セクションが本当に存在しない（録画/Gemini メモ未生成）」「マーカー無しの旧フォーマット」「Docs を手動編集してマーカーが消えた」のいずれかであり、CLI 側で区別する手段はない。ユーザーに状況確認するのが安全
 
 ### Drive ダウンロード
 
@@ -66,12 +69,15 @@ gws-cli drive download <file-id> [<dest>] [--export <format>] [--overwrite]
 ```
 
 - `file-id`: Drive のファイル ID（必須）
-- `dest`: 保存先（省略時はカレントディレクトリ、ディレクトリ指定で配下に Drive 名+拡張子で保存、`-` で stdout）
+- `dest`: 保存先（省略時はカレントディレクトリ、`-` で stdout）。判定ルールは次の通り:
+  - 末尾が `/` で終わる → ディレクトリ扱い。ディレクトリが存在しない場合はエラー（自動作成しない）。配下に Drive 名+拡張子で保存
+  - 既存ディレクトリのパス → ディレクトリ扱い。配下に Drive 名+拡張子で保存
+  - 上記以外 → ファイル名扱い。親ディレクトリは自動作成される（`mkdir -p` 相当を CLI 内部で実施）
 - `--export`: Google native（Docs/Sheets/Slides/Drawings）のエクスポート形式
   - shortcut: `pdf`, `docx`, `xlsx`, `pptx`, `png`, `jpeg`, `csv`, `txt`, `rtf`, `odt`, `ods`, `epub`, `tsv`
   - MIME 直指定可（例: `--export application/pdf`）
   - 既定: Docs→docx / Sheets→xlsx / Slides→pptx / Drawings→png
-- `--overwrite`: 既存ローカルファイルがあれば上書き
+- `--overwrite`: 既存 **ローカルファイル** があれば上書き（Drive 側には影響しない。`drive upload --overwrite` の Drive 上 revision 上書きとは意味が異なる点に注意）
 - 出力: ファイル保存時は JSON を stdout、`-` の場合は bytes を stdout / JSON を stderr
 
 挙動:
@@ -97,8 +103,8 @@ gws-cli drive upload <local-path> [--folder-id <folder-id>] [--name <drive-name>
 - `local-path`: アップロードするローカルファイル（必須）
 - `--folder-id`: マイドライブのフォルダ ID（デフォルト: マイドライブ直下）。環境変数 `GWS_CLI_DEFAULT_FOLDER_ID` でも指定可
 - `--name`: Drive 上の表示名（デフォルト: ローカルファイルの basename）
-- `--overwrite`: 同名ファイルが 1 件だけある場合に revision を上書き
-- `--keep-forever`: 作成した revision に `keepRevisionForever` を付与（長期保存したいとき）
+- `--overwrite`: 同名ファイルが 1 件だけある場合に **Drive 上の revision を破壊的に上書き**（`drive download --overwrite` のローカル上書きとは別物。誤付与すると既存ファイルを書き換える）
+- `--keep-forever`: 作成した revision に `keepRevisionForever` を付与し、30 日 / 100 件の自動削除上限から除外する（**revision 履歴の保護限定**。ファイル本体の削除防止や共有制御は対象外で、それらが必要なら Drive UI で別途設定）
 - 出力: JSON（`fileId`, `name`, `mimeType`, `webViewLink`, `action`）。`action` は `created` または `updated`
 
 挙動:
@@ -180,6 +186,9 @@ gws-cli drive download <docId> --export pdf
 
 # Sheets を CSV で stdout に流す
 gws-cli drive download <sheetId> - --export csv
+
+# 既存ローカルファイルを Drive 上の最新版で上書き（ローカル側の上書き。Drive には影響しない）
+gws-cli drive download <fileId> ./out/proposal.pptx --overwrite
 ```
 
 `fileId` は `calendar attachments` の出力や Drive UI の URL から取得できる。
@@ -217,7 +226,7 @@ gws-cli drive upload ./proposal.pptx --overwrite --keep-forever
 
 - Meet の文字起こしと Gemini メモは同一ドキュメント内の別セクションに格納されている（「Docs テキスト取得」節の挙動を参照）
 - トークン節約目的なら `--section transcript` / `--section notes` を使い、必要なセクションだけ抽出する
-- AI Agent が消費する場合は `--format plain`（デフォルト）が最もコンパクト
+- フォーマット選択: ユーザーが Markdown を明示的に要求したら `--format md` を優先する。明示要求がなく Agent 内部処理のみで使う場合は `--format plain`（デフォルト）がコンパクトでトークン効率が良い
 - エラー時は stderr にメッセージ + exit 1
 - `uv tool install` でインストール済みのためどの作業ディレクトリからでも実行可能
 - `drive upload` はマイドライブ専用（共有ドライブは未対応）
