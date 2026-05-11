@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.1](https://github.com/sakai-classmethod/gws-cli/compare/gws-cli-v0.3.0...gws-cli-v0.3.1) (2026-05-11)
+
+
+### Documentation
+
+* **gws-cli:** expand trigger phrases and clarify CLI spec edge cases ([#15](https://github.com/sakai-classmethod/gws-cli/issues/15)) ([957d3ef](https://github.com/sakai-classmethod/gws-cli/commit/957d3ef7045e246947593d55ebcfc26b9615c864))
+* **gws-cli:** shrink description under 1024-char limit ([9272270](https://github.com/sakai-classmethod/gws-cli/commit/927227079939e95e0ca60aae1a053810f153fc7d))
+
 ## [0.3.0](https://github.com/sakai-classmethod/gws-cli/compare/gws-cli-v0.2.1...gws-cli-v0.3.0) (2026-05-07)
 
 
