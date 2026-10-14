@@ -1,6 +1,6 @@
 [project]
 name = "gws-cli"
-version = "0.3.0"
+version = "0.4.0"
 description = "CLI for reading Google Workspace resources and for uploading files, creating folders, and moving items in My Drive"
 readme = "README.md"
 license = "MIT"
