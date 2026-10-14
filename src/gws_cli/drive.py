@@ -11,7 +11,7 @@ import typer
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
-from gws_cli.auth import build_drive_service, build_drive_upload_service
+from gws_cli.auth import build_drive_service, build_drive_write_service
 
 app = typer.Typer()
 
@@ -20,11 +20,23 @@ FOLDER_MIME = "application/vnd.google-apps.folder"
 DOWNLOAD_CHUNK_SIZE = 8 * 1024 * 1024
 
 
-class DriveUploadError(Exception):
+class DriveError(Exception):
     pass
 
 
-class DriveDownloadError(Exception):
+class DriveUploadError(DriveError):
+    pass
+
+
+class DriveDownloadError(DriveError):
+    pass
+
+
+class DriveMkdirError(DriveError):
+    pass
+
+
+class DriveMoveError(DriveError):
     pass
 
 
@@ -245,6 +257,120 @@ def upload_file(
         "webViewLink": result.get("webViewLink", ""),
         "action": "created",
         "previousRevisionId": None,
+    }
+
+
+def mkdir_folder(
+    service: Any, name: str, parent_id: str | None, exist_ok: bool
+) -> dict:
+    resolved_parent = parent_id or "root"
+
+    if parent_id is not None:
+        validate_folder(service, parent_id)
+
+    existing = find_existing(service, name, resolved_parent)
+
+    if len(existing) >= 2:
+        ids = [f["id"] for f in existing]
+        raise DriveMkdirError(
+            f"Multiple items named '{name}' exist in folder "
+            f"{resolved_parent}: fileIds={ids}. "
+            f"Resolve ambiguity manually before retrying."
+        )
+
+    response_fields = "id, name, mimeType, webViewLink"
+
+    if existing:
+        match = existing[0]
+        if not exist_ok:
+            raise DriveMkdirError(
+                f"'{name}' already exists in folder {resolved_parent} "
+                f"(fileId: {match['id']}). "
+                f"Pass --exist-ok to reuse an existing folder."
+            )
+        if match.get("mimeType") != FOLDER_MIME:
+            raise DriveMkdirError(
+                f"'{name}' exists but is not a folder in folder {resolved_parent} "
+                f"(fileId: {match['id']}, mimeType={match.get('mimeType')})"
+            )
+        result = (
+            service.files().get(fileId=match["id"], fields=response_fields).execute()
+        )
+        action = "existing"
+    else:
+        body = {"name": name, "mimeType": FOLDER_MIME, "parents": [resolved_parent]}
+        result = service.files().create(body=body, fields=response_fields).execute()
+        action = "created"
+
+    return {
+        "fileId": result["id"],
+        "name": result["name"],
+        "mimeType": result["mimeType"],
+        "webViewLink": result.get("webViewLink", ""),
+        "parentId": resolved_parent,
+        "action": action,
+    }
+
+
+def move_file(service: Any, file_id: str, to_folder_id: str, name: str | None) -> dict:
+    validate_folder(service, to_folder_id)
+
+    meta = (
+        service.files()
+        .get(fileId=file_id, fields="id, name, mimeType, parents, driveId, webViewLink")
+        .execute()
+    )
+    if meta.get("driveId"):
+        raise DriveMoveError(
+            f"File {file_id} is on a shared drive; only My Drive is allowed."
+        )
+
+    current_name: str = meta["name"]
+    final_name = name or current_name
+    previous_parents: list[str] = meta.get("parents", [])
+
+    collisions = [
+        f["id"]
+        for f in find_existing(service, final_name, to_folder_id)
+        if f["id"] != file_id
+    ]
+    if collisions:
+        raise DriveMoveError(
+            f"'{final_name}' already exists in destination {to_folder_id}: "
+            f"fileIds={collisions}. Pass --name to use a different name."
+        )
+
+    renaming = final_name != current_name
+
+    if to_folder_id in previous_parents and not renaming:
+        result = meta
+        action = "unchanged"
+    else:
+        update_kwargs: dict[str, Any] = {"fileId": file_id}
+        if to_folder_id not in previous_parents:
+            update_kwargs["addParents"] = to_folder_id
+        remove_parents = ",".join(p for p in previous_parents if p != to_folder_id)
+        if remove_parents:
+            update_kwargs["removeParents"] = remove_parents
+        result = (
+            service.files()
+            .update(
+                **update_kwargs,
+                body={"name": final_name} if renaming else {},
+                fields="id, name, mimeType, parents, webViewLink",
+            )
+            .execute()
+        )
+        action = "moved"
+
+    return {
+        "fileId": result["id"],
+        "name": result["name"],
+        "mimeType": result["mimeType"],
+        "webViewLink": result.get("webViewLink", ""),
+        "parentId": to_folder_id,
+        "previousParentIds": previous_parents,
+        "action": action,
     }
 
 
@@ -488,7 +614,7 @@ def upload_command(
         help="Mark the created revision with keepRevisionForever",
     ),
 ) -> None:
-    service = build_drive_upload_service()
+    service = build_drive_write_service()
     try:
         result = upload_file(
             service,
@@ -558,3 +684,58 @@ def download_command(
         print(payload, file=sys.stderr)
     else:
         print(payload)
+
+
+@app.command("mkdir")
+def mkdir_command(
+    name: str,
+    parent_id: str = typer.Option(
+        None,
+        "--parent-id",
+        envvar="GWS_CLI_DEFAULT_FOLDER_ID",
+        help="My Drive parent folder ID (defaults to My Drive root)",
+    ),
+    exist_ok: bool = typer.Option(
+        False,
+        "--exist-ok",
+        help="Return a single existing folder with the same name instead of failing",
+    ),
+) -> None:
+    service = build_drive_write_service()
+    try:
+        result = mkdir_folder(
+            service, name=name, parent_id=parent_id, exist_ok=exist_ok
+        )
+    except DriveError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        raise typer.Exit(code=1) from None
+    except HttpError as e:
+        print(f"Error: {e.resp.status} {e.resp.reason}", file=sys.stderr)
+        raise typer.Exit(code=1) from None
+
+    print(json.dumps(result, ensure_ascii=False))
+
+
+@app.command("move")
+def move_command(
+    file_id: str,
+    to: str = typer.Option(
+        ...,
+        "--to",
+        help="Destination My Drive folder ID ('root' for My Drive root)",
+    ),
+    name: str = typer.Option(
+        None, "--name", help="Rename to this display name while moving"
+    ),
+) -> None:
+    service = build_drive_write_service()
+    try:
+        result = move_file(service, file_id=file_id, to_folder_id=to, name=name)
+    except DriveError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        raise typer.Exit(code=1) from None
+    except HttpError as e:
+        print(f"Error: {e.resp.status} {e.resp.reason}", file=sys.stderr)
+        raise typer.Exit(code=1) from None
+
+    print(json.dumps(result, ensure_ascii=False))

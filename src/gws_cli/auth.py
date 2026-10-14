@@ -9,12 +9,12 @@ DRIVE_READ_SCOPES = [
     "https://www.googleapis.com/auth/drive.readonly",
 ]
 
-DRIVE_UPLOAD_SCOPES = [
+DRIVE_WRITE_SCOPES = [
     "https://www.googleapis.com/auth/drive.readonly",
     "https://www.googleapis.com/auth/drive.file",
 ]
 
-SCOPES = sorted({*CALENDAR_SCOPES, *DRIVE_READ_SCOPES, *DRIVE_UPLOAD_SCOPES})
+SCOPES = sorted({*CALENDAR_SCOPES, *DRIVE_READ_SCOPES, *DRIVE_WRITE_SCOPES})
 
 
 def get_credentials(scopes: list[str] | None = None):
@@ -30,5 +30,5 @@ def build_drive_service():
     return build("drive", "v3", credentials=get_credentials(DRIVE_READ_SCOPES))
 
 
-def build_drive_upload_service():
-    return build("drive", "v3", credentials=get_credentials(DRIVE_UPLOAD_SCOPES))
+def build_drive_write_service():
+    return build("drive", "v3", credentials=get_credentials(DRIVE_WRITE_SCOPES))

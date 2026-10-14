@@ -5,6 +5,8 @@ description: |
   発火条件: 文脈に「Drive」「ドライブ」「マイドライブ」「GDrive」「Docs」「Meet」「Calendar」「Workspace」のいずれかが含まれ、以下のいずれかに該当するとき。口語・短縮・カタカナ／英語混在（up / DL / アップ / 落として / 投げて / 放り込んで / 置いて / あげて / 保存して）も全て対象。
   - マイドライブへのローカルファイルアップロード（例:「Drive に上げて」「マイドライブに保存」「PDF をアップ」「Drive に up しといて」「成果物を Drive に投げて」）
   - Agent 生成物（提案書・PPTX・PDF・議事録 Markdown 等）の Drive 保存
+  - マイドライブのフォルダ作成（例:「フォルダ作って」「フォルダ作成」「ディレクトリ掘って」）
+  - Drive 上のファイル／フォルダの移動・リネーム（例:「移動して」「〜フォルダに入れて」「整理して」「別フォルダへ」「リネームして」）
   - Drive からローカルへのダウンロード（例:「Drive から落として」「PPTX を DL」「Doc を docx で保存」「最新版に差し替え」）
   - Meet 文字起こし／議事録元データの取得
   - Calendar イベント添付ファイル／説明欄の Drive リンク抽出
@@ -20,7 +22,7 @@ allowed-tools:
 Google Workspace のリソースを読み書きする CLI ツール。Calendar / Docs / Drive を 1 つのコマンドラインから扱える。
 
 - 読み取り: Calendar イベント (添付 + 説明文の Drive リンク抽出含む) / Calendar 一覧 / Google Docs テキスト / Drive ファイルダウンロード
-- 書き込み: ローカルファイルをマイドライブへアップロード（Agent 生成物の保存など）
+- 書き込み: ローカルファイルをマイドライブへアップロード（Agent 生成物の保存など） / マイドライブのフォルダ作成 / ファイル・フォルダの移動とリネーム
 
 ## 前提条件
 
@@ -185,6 +187,55 @@ gws-cli drive upload <local-path> [--folder-id <folder-id>] [--name <drive-name>
 - ユーザーが「新規アップロード」「保存して」と依頼したとき: `--overwrite` を付けない。同名 1 件で `already exists` エラーが返ったら、既存ファイルを壊す変更になるためユーザーに確認してから `--overwrite` を付けて再実行する
 - `--overwrite` は「同名 1 件に対する破壊的な revision 更新」であり、予防的・思考停止で付けるのは避ける
 
+### Drive フォルダ作成
+
+```bash
+gws-cli drive mkdir <name> [--parent-id <folder-id>] [--exist-ok]
+```
+
+- `name`: 作成するフォルダ名（必須）
+- `--parent-id`: 親となるマイドライブのフォルダ ID（デフォルト: マイドライブ直下）で、環境変数 `GWS_CLI_DEFAULT_FOLDER_ID` でも指定可（`drive upload` の `--folder-id` と同じ既定値を共有）
+- `--exist-ok`: 同名フォルダが 1 件あれば作成せずにそれを返す（冪等で、Agent が同じフォルダを何度も作らないために使う）
+- 出力: JSON（`fileId`, `name`, `mimeType`, `webViewLink`, `parentId`, `action`）で、`action` は `created` または `existing`、`fileId` はそのまま `drive upload --folder-id` / `drive move --to` / `drive mkdir --parent-id` に渡せる
+
+挙動:
+
+- 同名 0 件: 新規作成（`action: created`）
+- 同名 1 件 + `--exist-ok` + それがフォルダ: 既存フォルダを返す（`action: existing`）
+- 同名 1 件 + `--exist-ok` + それがフォルダ以外のファイル: エラー終了
+- 同名 1 件 + `--exist-ok` なし: エラー終了（既存の fileId を提示）
+- 同名 2 件以上: エラー終了（`--exist-ok` 有無にかかわらず、fileId を列挙）
+- `--parent-id` が共有ドライブ配下 / フォルダ以外: エラー終了（マイドライブ限定）
+- 同名判定は mimeType を問わない（`drive upload` と同じ「同一親の中で名前は一意」という CLI 側のルールで、Drive 自体は重複名を許すが Agent の決定性のために CLI が拒否する）
+- 任意のマイドライブフォルダ配下に作成できる（`drive upload` が任意フォルダに作成できるのと同じで、`drive.file` スコープの制約を受けない）
+
+### Drive 移動
+
+```bash
+gws-cli drive move <file-id> --to <folder-id> [--name <new-name>]
+```
+
+- `file-id`: 移動するファイルまたはフォルダの ID（必須）
+- `--to`: 移動先のマイドライブフォルダ ID（必須、`root` でマイドライブ直下）
+- `--name`: 移動と同時に付ける新しい名前（任意）で、現在の親フォルダを `--to` に指定すればリネームだけにも使える
+- 出力: JSON（`fileId`, `name`, `mimeType`, `webViewLink`, `parentId`, `previousParentIds`, `action`）で、`action` は `moved` または `unchanged`
+
+挙動:
+
+- 移動先が共有ドライブ配下 / フォルダ以外: エラー終了
+- 移動対象が共有ドライブ上: エラー終了（マイドライブ限定）
+- 移動先に同名（`--name` 指定時はその名前）のファイル／フォルダがある: エラー終了（fileId を列挙し、`--name` で別名にすれば回避可）
+- すでに移動先に存在し名前変更もない: API を呼ばずに `action: unchanged`
+- それ以外: `files.update` の `addParents` / `removeParents` で親を付け替え、移動前の親はすべて外れる（`action: moved`）
+- フォルダを自分自身の子孫へ移動するなど Drive が拒否する操作は API エラー（`Error: 4xx ...`）で exit 1
+- `drive.file` スコープの仕様上、移動できるのはこの CLI（同じ OAuth クライアント）が作成したファイル・フォルダのみで、Drive UI や他ツールで作成されたものは検出・参照はできるが `files.update` が 403 を返す
+
+`drive move` の運用指針:
+
+- ユーザーが「移動して」「〜フォルダに入れて」「整理して」「リネームして」と対象と移動先を明示したとき: そのまま `drive move` を実行する
+- ユーザーが移動を明示していないとき: `drive move` はファイル内容や revision を書き換えない（`--name` も破壊的ではない）が、移動自体は Drive 上のフォルダ構造を変え、親フォルダから継承される共有設定も変わり得るため、対象と移動先をユーザーに確認してから実行する
+- 「アップロード先を間違えた」などの修正は、再アップロードで重複を作るより `drive move` で付け替える方を優先する
+
 ## 典型的なワークフロー
 
 ### ワークフロー A: Meet の文字起こしを取得（gws-cli 完結）
@@ -272,6 +323,17 @@ gws-cli drive upload ./proposal.pptx --overwrite
 
 # 長期保存（30日 / 100 revision の自動削除対象から除外）
 gws-cli drive upload ./proposal.pptx --overwrite --keep-forever
+
+# フォルダを作成してからその中に保存（mkdir の出力の fileId を --folder-id に渡す）
+gws-cli drive mkdir "2026Q2" --parent-id <parent-folder-id>
+gws-cli drive upload ./report.pdf --folder-id <mkdir の fileId>
+
+# --exist-ok で冪等にフォルダ ID を取得してから upload（既存の同名フォルダがあればそれを再利用）
+gws-cli drive mkdir "2026Q2" --parent-id <parent-folder-id> --exist-ok
+gws-cli drive upload ./proposal.pptx --folder-id <mkdir の fileId>
+
+# アップロード後に別フォルダへ移動（--name で同時にリネームも可能）
+gws-cli drive move <upload の fileId> --to <folder-id> --name "提案書_最終版.pptx"
 ```
 
 レスポンス例:
@@ -308,21 +370,29 @@ for link in event['links']:
 - フォーマット選択: ユーザーが Markdown を明示的に要求したら `--format md` を優先する。明示要求がなく Agent 内部処理のみで使う場合は `--format plain`（デフォルト）がコンパクトでトークン効率が良い
 - エラー時は stderr にメッセージ + exit 1（`event list --all-pages` の引数不足は exit 2）
 - `uv tool install` でインストール済みのためどの作業ディレクトリからでも実行可能
-- `drive upload` はマイドライブ専用（共有ドライブは未対応）
+- `drive upload` / `drive mkdir` / `drive move` はマイドライブ専用（共有ドライブは未対応）
 - 同じフォルダ・同じ名前の対象に並行アップロードを走らせるとレース条件で重複作成になるため、Agent ワークフローでは逐次実行すること
 - バイナリファイル（PPTX/PDF など）の revision は標準で 30 日 / 100 件の早い方が上限。長期保存が必要なら `--keep-forever` を付ける
 - `--overwrite` は `drive.file` スコープの仕様上、この CLI で作成したファイルにのみ有効。Drive UI 等で手動作成された同名ファイルは検出はされるが `files.update` が 403 を返すため、別名で新規作成するか Drive UI で削除してから再実行する
   - `drive.file` スコープ: OAuth スコープの一種で、このアプリが作成したファイルにのみ書き込み権限を与える（他アプリ / Drive UI 作成ファイルは読み取り専用になる）。`drive.readonly` が同名検出のためのメタデータ参照、`drive.file` が create / update 実行、という役割分担
+- `drive move` も同じ `drive.file` 制約を受け、この CLI で作成したファイル・フォルダのみを移動できる（Drive UI 等で作成されたものは 403 になるので Drive UI で移動し、新規作成である `drive mkdir` はこの制約を受けない）
+- `drive mkdir` / `drive move` の同名判定は mimeType を問わず、同名のファイルとフォルダも衝突として扱う
 
 ## エラー対処
 
 - 403 Forbidden: 主に 2 系統ある。切り分けは「同じ ADC で別コマンド（例: `gws-cli calendar calendars`）が通るか」で判定
   - 読み取り系コマンドも 403 → ADC のスコープ不足。`gcloud auth application-default login --scopes=...` を再実行
-  - 読み取り系は通るが `drive upload --overwrite` のみ 403 → `drive.file` スコープ制約（下記の `--overwrite` 実行時 403 を参照）
+  - 読み取り系は通るが `drive upload --overwrite` または `drive move` のみ 403 → `drive.file` スコープ制約（下記の `--overwrite` / `drive move` 実行時 403 を参照）
 - 404 Not Found: イベント ID / ドキュメント ID / フォルダ ID が不正、または `--calendar-id` を間違えている
 - `event list --all-pages` で exit 2: `--time-min` と `--time-max` の両方を指定する。長期レンジ全件取得の事故防止のための仕様
 - `File '...' already exists`: 同名ファイルが既存。`--overwrite` を付けるか `--name` で別名に変更
 - `Multiple files named '...' exist`: 同名ファイルが 2 件以上。Drive UI で整理してから再実行
 - `Folder ... is on a shared drive`: 共有ドライブのフォルダは未対応。マイドライブのフォルダ ID を指定
 - `--overwrite` 実行時に 403 Forbidden: 対象ファイルがこの CLI 以外（Drive UI 等）で作成されている可能性が高い。`drive.file` スコープは他ツール作成ファイルを更新できない。`--name` で別名にして新規作成するか Drive UI で削除してから再実行
+- `'...' already exists in folder ...`（`drive mkdir`）: 同名フォルダを再利用したいなら `--exist-ok` を付けて再実行し、それ以外は別名にする
+- `'...' exists but is not a folder` / `Multiple items named '...' exist`（`drive mkdir`）: 同名がフォルダ以外のファイル、または 2 件以上あるため `--exist-ok` でも解消しない。別名にするか Drive UI で整理する
+- `'...' already exists in destination ...`（`drive move`）: 移動先に同名のファイル／フォルダがあるため、`--name` で別名を指定するか、Drive UI で移動先を整理してから再実行
+- `File ... is on a shared drive`（`drive move`）: 共有ドライブ上のファイルは未対応。マイドライブ上の対象のみ移動できる
+- `drive move` 実行時に 403 Forbidden: 対象がこの CLI 以外（Drive UI 等）で作成されている可能性が高く、`drive.file` スコープでは移動できないため、Drive UI で移動する
+- `drive move` で `Error: 4xx ...`（フォルダ移動時）: フォルダを自分自身またはその子孫へ移動しようとして Drive に拒否された可能性が高いため、`--to` の ID を見直す
 - `'calendar attachments' is deprecated` warning: 新コマンド `gws-cli calendar event get` に切り替える。挙動はほぼ上位互換 (event 全体 + `links` フィールド付き)
