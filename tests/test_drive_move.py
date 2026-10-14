@@ -211,8 +211,8 @@ def test_cli_move_emits_json_to_stdout(monkeypatch):
 def test_cli_move_requires_destination():
     result = CliRunner().invoke(app, ["move", "f1"])
 
-    assert result.exit_code != 0
-    assert "--to" in result.stderr
+    # rich は端末幅に応じて usage 文を省略するので、文言ではなく終了コードで判定する
+    assert result.exit_code == 2
 
 
 def test_cli_move_reports_drive_error_and_exits_nonzero(monkeypatch):
