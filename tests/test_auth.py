@@ -4,11 +4,11 @@ import gws_cli.auth as auth_module
 from gws_cli.auth import (
     CALENDAR_SCOPES,
     DRIVE_READ_SCOPES,
-    DRIVE_UPLOAD_SCOPES,
+    DRIVE_WRITE_SCOPES,
     SCOPES,
     build_calendar_service,
     build_drive_service,
-    build_drive_upload_service,
+    build_drive_write_service,
     get_credentials,
 )
 
@@ -18,7 +18,7 @@ def test_scopes_include_calendar_and_drive_readonly():
     assert "https://www.googleapis.com/auth/drive.readonly" in SCOPES
 
 
-def test_scopes_include_drive_file_for_upload():
+def test_scopes_include_drive_file_for_write():
     assert "https://www.googleapis.com/auth/drive.file" in SCOPES
 
 
@@ -30,16 +30,16 @@ def test_drive_read_scopes_are_limited_to_drive_readonly():
     assert DRIVE_READ_SCOPES == ["https://www.googleapis.com/auth/drive.readonly"]
 
 
-def test_drive_upload_scopes_pair_readonly_and_file():
-    assert set(DRIVE_UPLOAD_SCOPES) == {
+def test_drive_write_scopes_pair_readonly_and_file():
+    assert set(DRIVE_WRITE_SCOPES) == {
         "https://www.googleapis.com/auth/drive.readonly",
         "https://www.googleapis.com/auth/drive.file",
     }
 
 
-def test_drive_upload_scopes_do_not_include_calendar():
+def test_drive_write_scopes_do_not_include_calendar():
     assert "https://www.googleapis.com/auth/calendar.readonly" not in (
-        DRIVE_UPLOAD_SCOPES
+        DRIVE_WRITE_SCOPES
     )
 
 
@@ -96,11 +96,11 @@ def test_build_drive_service_requests_drive_read_scopes(monkeypatch):
     assert args[0] == "drive"
 
 
-def test_build_drive_upload_service_requests_drive_upload_scopes(monkeypatch):
+def test_build_drive_write_service_requests_drive_write_scopes(monkeypatch):
     default_mock, build_mock = _patch_auth_builders(monkeypatch)
 
-    build_drive_upload_service()
+    build_drive_write_service()
 
-    default_mock.assert_called_once_with(scopes=DRIVE_UPLOAD_SCOPES)
+    default_mock.assert_called_once_with(scopes=DRIVE_WRITE_SCOPES)
     args, _ = build_mock.call_args
     assert args[0] == "drive"

@@ -3,7 +3,7 @@
 Google Workspace リソースを扱う CLI ツール。
 
 - 読み取り: Calendar イベント (添付 + 説明文の Drive リンクを構造化抽出)、Calendar 一覧、Google Docs テキスト（Meet 文字起こし取得の自動化向け）、Drive 上の任意ファイルのダウンロード
-- 書き込み: ローカルファイルを自分のマイドライブにアップロード（Agent 生成物の PPTX/PDF などを対象）
+- 書き込み: ローカルファイルを自分のマイドライブにアップロード（Agent 生成物の PPTX/PDF などを対象）、マイドライブ上のフォルダ作成とファイル・フォルダの移動
 
 ## 目次
 
@@ -20,6 +20,8 @@ Google Workspace リソースを扱う CLI ツール。
     - [Docs テキスト取得](#docs-テキスト取得)
     - [Drive アップロード](#drive-アップロード)
     - [Drive ダウンロード](#drive-ダウンロード)
+    - [Drive フォルダ作成](#drive-フォルダ作成)
+    - [Drive 移動](#drive-移動)
     - [典型的なワークフロー: Meet の文字起こし取得](#典型的なワークフロー-meet-の文字起こし取得)
 - [関連ドキュメント](#関連ドキュメント)
 
@@ -34,6 +36,7 @@ Google Workspace リソースを扱う CLI ツール。
 - Meet の文字起こし（`📖 文字起こし`）やメモ（`📝 メモ`）をセクション単位で抽出
 - マイドライブへのファイルアップロード（上書き・revision 保持に対応）
 - Drive 上の任意ファイルのダウンロード（バイナリ + Google native のエクスポート、共有ドライブ対応）
+- マイドライブ上のフォルダ作成（`--exist-ok` で冪等）と、ファイル・フォルダの移動・リネーム
 
 Claude Code のスキルとして組み込むことで、会議の文字起こし取得から要約・分析、成果物の Drive 保存までのワークフローを自動化できる。
 
@@ -50,11 +53,11 @@ Claude Code のスキルとして組み込むことで、会議の文字起こ�
 - Google Cloud の Application Default Credentials（ADC）が認証済みであること
   - 必要なスコープ:
     - `calendar.readonly` — Calendar イベント / カレンダー一覧読み取り（`calendar event get|list`, `calendar calendars`, `calendar attachments`）
-    - `drive.readonly` — Google Docs 本文読み取り + Drive upload 時の同名ファイル事前検出（`docs get`, `drive upload`）
-    - `drive.file` — この CLI が作成したファイルへの書き込み（`drive upload`）
+    - `drive.readonly` — Google Docs 本文読み取り + Drive upload / mkdir / move 時の同名ファイル事前検出と対象メタデータ参照（`docs get`, `drive upload`, `drive mkdir`, `drive move`）
+    - `drive.file` — この CLI が作成したファイルへの書き込み、フォルダ作成、この CLI が作成したファイル・フォルダの移動（`drive upload`, `drive mkdir`, `drive move`）
   - CLI は用途別にスコープを使い分けて認証情報を取得する（例: `calendar` コマンドは `calendar.readonly` のみを要求）
   - ただし `gcloud auth application-default login` で取得する ADC は全スコープを事前に grant しておく必要がある
-  - `drive.file` のみの付与では `drive upload` の同名ファイル検出が機能しない（手動作成されたファイルが見えず silent duplicate になる）ため `drive.readonly` と併用すること
+  - `drive.file` のみの付与では `drive upload` / `drive mkdir` / `drive move` の同名ファイル検出が機能しない（手動作成されたファイルが見えず silent duplicate になる）ため `drive.readonly` と併用すること
 
 ## 使い方
 
@@ -190,6 +193,13 @@ gws-cli drive upload <local-path> [--folder-id <folder-id>] [--name <drive-name>
 
 revision の履歴は Drive UI の「版の管理」または Revisions API から復元できる。バイナリファイル（PPTX/PDF など）はデフォルトで 30 日 / 100 revision のうち早い方が上限なので、長期保存が必要なときは `--keep-forever` を使う。
 
+フォルダを作成してその中にアップロードする例（`drive mkdir` の出力の `fileId` を `--folder-id` に渡す）:
+
+```bash
+FOLDER_ID=$(gws-cli drive mkdir 2026Q2 --exist-ok | jq -r .fileId)
+gws-cli drive upload ./report.pdf --folder-id "$FOLDER_ID"
+```
+
 制約:
 
 - 同じフォルダ・同じ名前の対象に対して並行に `drive upload` を走らせると、同名判定と新規作成/上書きの間でレースが発生し、予期しない重複作成や stale な revision ログが出る可能性がある。Agent ワークフローで同一ターゲットを操作する場合は逐次実行を推奨する
@@ -251,6 +261,91 @@ Google native の既定エクスポート:
 ```
 
 `source` は `"media"`（バイナリ DL）または `"export"`（Google native のエクスポート）。`md5Checksum` は `source=export` の場合 `null` になる（エクスポート結果は元ファイルのハッシュではないため）。
+
+#### Drive フォルダ作成
+
+```bash
+gws-cli drive mkdir <name> [--parent-id <folder-id>] [--exist-ok]
+```
+
+| パラメータ | 説明 | デフォルト |
+| :--- | :--- | :--- |
+| `name` | 作成するフォルダ名 | (必須) |
+| `--parent-id` | 親となるマイドライブフォルダ ID | マイドライブ直下 |
+| `--exist-ok` | 同名フォルダが 1 件だけある場合は作成せずにそれを返す | off |
+
+環境変数 `GWS_CLI_DEFAULT_FOLDER_ID` を設定すると `--parent-id` 未指定時の既定値になる（`drive upload` の `--folder-id` と同じ既定値を共有する）。
+
+挙動:
+
+- 同名が 0 件: フォルダを新規作成（`action: "created"`）
+- 同名が 1 件 かつ `--exist-ok` あり かつ それがフォルダ: 既存フォルダを返す（`action: "existing"`）
+- 同名が 1 件 かつ `--exist-ok` あり かつ それがフォルダ以外のファイル: エラー終了
+- 同名が 1 件 かつ `--exist-ok` なし: エラー終了（既存の fileId を提示）
+- 同名が 2 件以上: `--exist-ok` の有無にかかわらずエラー終了（fileId を列挙）
+- `--parent-id` が共有ドライブ配下のフォルダ、またはフォルダ以外を指している場合はエラー終了（マイドライブ限定）
+- 同名判定は mimeType を問わない（`drive upload` と同じく「同一親の中で名前は一意」という CLI 側のルールで、Drive 自体は重複名を許すが Agent の操作を決定的にするために CLI が拒否する）
+
+stdout には JSON を出力する。
+
+```json
+{
+  "fileId": "1AbC...",
+  "name": "2026Q2",
+  "mimeType": "application/vnd.google-apps.folder",
+  "webViewLink": "https://drive.google.com/drive/folders/...",
+  "parentId": "0AOxYz...",
+  "action": "created"
+}
+```
+
+`action` は `created` または `existing`。`parentId` は `root` 指定時もマイドライブルートの実 ID になる。`fileId` はそのまま `drive upload --folder-id` / `drive move --to` / `drive mkdir --parent-id` に渡せる。Agent が同じフォルダを何度も作らないようにするには `--exist-ok` を付ける。
+
+制約:
+
+- `drive mkdir` は `drive upload` が任意のフォルダにファイルを作成できるのと同じく、任意のマイドライブフォルダ配下にフォルダを作成できる（`drive.file` スコープでも新規作成は制限されない）
+- 同じ親・同じ名前に対して並行に `drive mkdir` を走らせると、同名判定と作成の間でレースが発生して重複フォルダができる可能性があるため、Agent ワークフローでは逐次実行を推奨する
+
+#### Drive 移動
+
+```bash
+gws-cli drive move <file-id> --to <folder-id> [--name <new-name>]
+```
+
+| パラメータ | 説明 | デフォルト |
+| :--- | :--- | :--- |
+| `file-id` | 移動するファイルまたはフォルダの ID | (必須) |
+| `--to` | 移動先のマイドライブフォルダ ID（`root` でマイドライブ直下） | (必須) |
+| `--name` | 移動と同時に設定する新しい名前 | 変更なし |
+
+挙動:
+
+- 移動先が共有ドライブ配下のフォルダ、またはフォルダ以外: エラー終了
+- 移動対象が共有ドライブ上にある: エラー終了（マイドライブ限定）
+- 移動先に同名（`--name` 指定時はその名前）のファイル・フォルダがある: エラー終了（fileId を列挙し、`--name` で別名にすれば回避できる）
+- 対象がすでに移動先にあり名前の変更もない: メタデータの確認（`files.get` / `files.list`）だけ行い、`files.update` を呼ばずに `action: "unchanged"` を返す
+- 上記以外: `files.update` の `addParents` / `removeParents` で親を付け替え、移動前の親はすべて外れる（`action: "moved"`）
+- フォルダを自分自身の子孫へ移動するなど Drive が拒否する操作は、API エラー（`Error: 4xx ...`）として exit 1 で終了する
+
+stdout には JSON を出力する。
+
+```json
+{
+  "fileId": "1AbC...",
+  "name": "proposal.pptx",
+  "mimeType": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "webViewLink": "https://drive.google.com/file/d/.../view",
+  "parentId": "1FoLdEr...",
+  "previousParentIds": ["root"],
+  "action": "moved"
+}
+```
+
+`action` は `moved` または `unchanged`。`previousParentIds` は移動前に付いていた親フォルダ ID の一覧。
+
+制約:
+
+- `drive move` は `drive.file` スコープの仕様上、この CLI（同じ OAuth クライアント）で作成したファイル・フォルダにのみ適用可能で、Drive UI や他ツールで作成されたファイルは検出・参照はできるが `files.update` が 403 を返すため、そうしたファイルは Drive UI で移動すること
 
 #### 典型的なワークフロー: Meet の文字起こし取得
 

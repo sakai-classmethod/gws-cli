@@ -117,6 +117,11 @@ def test_validate_folder_requests_driveId_and_mimeType_fields():
     )
 
 
+def test_validate_folder_returns_canonical_id_for_root_alias():
+    service = _make_service(get_return={"id": "0Areal", "mimeType": FOLDER_MIME})
+    assert validate_folder(service, "root") == "0Areal"
+
+
 # --- find_existing ---
 
 
@@ -153,6 +158,23 @@ def test_find_existing_does_not_pass_supports_all_drives():
     find_existing(service, "foo.pptx", "parent-1")
     kwargs = service.files.return_value.list.call_args.kwargs
     assert "supportsAllDrives" not in kwargs
+
+
+def test_find_existing_follows_next_page_token_until_exhausted():
+    match = {"id": "f2", "name": "foo.pptx", "mimeType": "x"}
+    service = _make_service()
+    service.files.return_value.list.return_value.execute.side_effect = [
+        {"files": [], "nextPageToken": "tok-2"},
+        {"files": [match]},
+    ]
+
+    assert find_existing(service, "foo.pptx", "parent-1") == [match]
+
+    calls = service.files.return_value.list.call_args_list
+    assert len(calls) == 2
+    assert "pageToken" not in calls[0].kwargs
+    assert calls[1].kwargs["pageToken"] == "tok-2"
+    assert "nextPageToken" in calls[0].kwargs["fields"]
 
 
 # --- upload_file: errors ---
