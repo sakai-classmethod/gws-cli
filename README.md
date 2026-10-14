@@ -294,12 +294,12 @@ stdout には JSON を出力する。
   "name": "2026Q2",
   "mimeType": "application/vnd.google-apps.folder",
   "webViewLink": "https://drive.google.com/drive/folders/...",
-  "parentId": "root",
+  "parentId": "0AOxYz...",
   "action": "created"
 }
 ```
 
-`action` は `created` または `existing`。`fileId` はそのまま `drive upload --folder-id` / `drive move --to` / `drive mkdir --parent-id` に渡せる。Agent が同じフォルダを何度も作らないようにするには `--exist-ok` を付ける。
+`action` は `created` または `existing`。`parentId` は `root` 指定時もマイドライブルートの実 ID になる。`fileId` はそのまま `drive upload --folder-id` / `drive move --to` / `drive mkdir --parent-id` に渡せる。Agent が同じフォルダを何度も作らないようにするには `--exist-ok` を付ける。
 
 制約:
 
@@ -323,7 +323,7 @@ gws-cli drive move <file-id> --to <folder-id> [--name <new-name>]
 - 移動先が共有ドライブ配下のフォルダ、またはフォルダ以外: エラー終了
 - 移動対象が共有ドライブ上にある: エラー終了（マイドライブ限定）
 - 移動先に同名（`--name` 指定時はその名前）のファイル・フォルダがある: エラー終了（fileId を列挙し、`--name` で別名にすれば回避できる）
-- 対象がすでに移動先にあり名前の変更もない: API を呼ばずに `action: "unchanged"` を返す
+- 対象がすでに移動先にあり名前の変更もない: メタデータの確認（`files.get` / `files.list`）だけ行い、`files.update` を呼ばずに `action: "unchanged"` を返す
 - 上記以外: `files.update` の `addParents` / `removeParents` で親を付け替え、移動前の親はすべて外れる（`action: "moved"`）
 - フォルダを自分自身の子孫へ移動するなど Drive が拒否する操作は、API エラー（`Error: 4xx ...`）として exit 1 で終了する
 

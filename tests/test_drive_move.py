@@ -20,11 +20,13 @@ def _make_http_error(status, reason, content):
 
 def _make_service(target, list_return=None, update_return=None, dest_meta=None):
     service = MagicMock()
-    dest = dest_meta if dest_meta is not None else {"mimeType": FOLDER_MIME}
+    dest = (
+        dest_meta if dest_meta is not None else {"id": "dst1", "mimeType": FOLDER_MIME}
+    )
 
-    def _get(fileId, fields):
+    def _get(fileId, **_kwargs):
         req = MagicMock()
-        req.execute.return_value = target if fields == TARGET_FIELDS else dest
+        req.execute.return_value = target if fileId == target["id"] else dest
         return req
 
     service.files.return_value.get.side_effect = _get
@@ -155,6 +157,53 @@ def test_move_is_unchanged_when_already_in_destination_with_same_name():
     }
 
 
+def test_move_folder_reparents_like_a_file():
+    folder = _target(name="reports", mimeType=FOLDER_MIME)
+    moved = {**_updated(name="reports"), "mimeType": FOLDER_MIME}
+    service = _make_service(folder, update_return=moved)
+
+    result = move_file(service, "f1", "dst1", name=None)
+
+    update_kwargs = service.files.return_value.update.call_args.kwargs
+    assert update_kwargs["addParents"] == "dst1"
+    assert update_kwargs["removeParents"] == "src1"
+    assert result["mimeType"] == FOLDER_MIME
+    assert result["action"] == "moved"
+
+
+def test_move_to_root_alias_is_unchanged_when_already_at_my_drive_root():
+    service = _make_service(
+        _target(parents=("0Aroot",)),
+        dest_meta={"id": "0Aroot", "mimeType": FOLDER_MIME},
+    )
+
+    result = move_file(service, "f1", "root", name=None)
+
+    service.files.return_value.update.assert_not_called()
+    assert (
+        "'0Aroot' in parents" in service.files.return_value.list.call_args.kwargs["q"]
+    )
+    assert result["action"] == "unchanged"
+    assert result["parentId"] == "0Aroot"
+
+
+def test_move_to_root_alias_with_name_only_renames_at_my_drive_root():
+    service = _make_service(
+        _target(parents=("0Aroot",)),
+        dest_meta={"id": "0Aroot", "mimeType": FOLDER_MIME},
+        update_return=_updated(name="final.pdf", parents=("0Aroot",)),
+    )
+
+    result = move_file(service, "f1", "root", name="final.pdf")
+
+    update_kwargs = service.files.return_value.update.call_args.kwargs
+    assert "addParents" not in update_kwargs
+    assert "removeParents" not in update_kwargs
+    assert update_kwargs["body"] == {"name": "final.pdf"}
+    assert result["parentId"] == "0Aroot"
+    assert result["action"] == "moved"
+
+
 def test_move_rejects_non_folder_destination():
     service = _make_service(_target(), dest_meta={"mimeType": "application/pdf"})
 
@@ -208,8 +257,9 @@ def test_cli_move_emits_json_to_stdout(monkeypatch):
     assert payload["parentId"] == "dst1"
 
 
-def test_cli_move_requires_destination():
-    result = CliRunner().invoke(app, ["move", "f1"])
+@pytest.mark.parametrize("env", [{}, {"GWS_CLI_DEFAULT_FOLDER_ID": "envp"}])
+def test_cli_move_requires_destination(env):
+    result = CliRunner().invoke(app, ["move", "f1"], env=env)
 
     # rich は端末幅に応じて usage 文を省略するので、文言ではなく終了コードで判定する
     assert result.exit_code == 2
@@ -238,3 +288,17 @@ def test_cli_move_reports_http_error_and_exits_nonzero(monkeypatch):
 
     assert result.exit_code == 1
     assert "Error: 400 Bad Request" in result.stderr
+
+
+def test_cli_move_reports_drive_rejection_of_move_into_itself(monkeypatch):
+    service = _make_service(_target(name="reports", mimeType=FOLDER_MIME))
+    service.files.return_value.update.return_value.execute.side_effect = (
+        _make_http_error(400, "Bad Request", b'{"error": {"code": 400}}')
+    )
+    monkeypatch.setattr(drive_mod, "build_drive_write_service", lambda: service)
+
+    result = CliRunner().invoke(app, ["move", "f1", "--to", "dst1"])
+
+    assert result.exit_code == 1
+    assert result.stderr.startswith("Error: 400 ")
+    assert result.stdout == ""

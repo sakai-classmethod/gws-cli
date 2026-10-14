@@ -36,12 +36,13 @@ def _make_service(get_return=None, list_return=None, create_return=None):
     return service
 
 
-def _created_folder(file_id="new1", name="reports"):
+def _created_folder(file_id="new1", name="reports", parents=("0Aroot",)):
     return {
         "id": file_id,
         "name": name,
         "mimeType": FOLDER_MIME,
         "webViewLink": f"https://drive.google.com/drive/folders/{file_id}",
+        "parents": list(parents),
     }
 
 
@@ -64,14 +65,14 @@ def test_mkdir_creates_folder_under_root_when_parent_omitted():
         "mimeType": FOLDER_MIME,
         "parents": ["root"],
     }
-    assert create_kwargs["fields"] == "id, name, mimeType, webViewLink"
+    assert create_kwargs["fields"] == "id, name, mimeType, webViewLink, parents"
     assert "supportsAllDrives" not in create_kwargs
     assert result == {
         "fileId": "new1",
         "name": "reports",
         "mimeType": FOLDER_MIME,
         "webViewLink": "https://drive.google.com/drive/folders/new1",
-        "parentId": "root",
+        "parentId": "0Aroot",
         "action": "created",
     }
 
@@ -79,7 +80,7 @@ def test_mkdir_creates_folder_under_root_when_parent_omitted():
 def test_mkdir_validates_explicit_parent_as_my_drive_folder():
     service = _make_service(
         get_return={"id": "p1", "mimeType": FOLDER_MIME},
-        create_return=_created_folder(),
+        create_return=_created_folder(parents=("p1",)),
     )
 
     result = mkdir_folder(service, "reports", parent_id="p1", exist_ok=False)
@@ -91,6 +92,16 @@ def test_mkdir_validates_explicit_parent_as_my_drive_folder():
         "p1"
     ]
     assert result["parentId"] == "p1"
+
+
+def test_mkdir_falls_back_to_requested_parent_when_response_lacks_parents():
+    created = _created_folder()
+    del created["parents"]
+    service = _make_service(create_return=created)
+
+    result = mkdir_folder(service, "reports", parent_id=None, exist_ok=False)
+
+    assert result["parentId"] == "root"
 
 
 def test_mkdir_rejects_shared_drive_parent():
@@ -118,14 +129,14 @@ def test_mkdir_exist_ok_returns_existing_folder_without_creating():
     get_kwargs = service.files.return_value.get.call_args.kwargs
     assert get_kwargs == {
         "fileId": "old1",
-        "fields": "id, name, mimeType, webViewLink",
+        "fields": "id, name, mimeType, webViewLink, parents",
     }
     assert result == {
         "fileId": "old1",
         "name": "reports",
         "mimeType": FOLDER_MIME,
         "webViewLink": "https://drive.google.com/drive/folders/old1",
-        "parentId": "root",
+        "parentId": "0Aroot",
         "action": "existing",
     }
 
@@ -184,7 +195,7 @@ def test_mkdir_rejects_multiple_same_named_entries(exist_ok):
 def test_cli_mkdir_emits_json_and_reads_parent_from_env(monkeypatch):
     service = _make_service(
         get_return={"id": "envp", "mimeType": FOLDER_MIME},
-        create_return=_created_folder(name="議事録"),
+        create_return=_created_folder(name="議事録", parents=("envp",)),
     )
     monkeypatch.setattr(drive_mod, "build_drive_write_service", lambda: service)
     monkeypatch.setenv("GWS_CLI_DEFAULT_FOLDER_ID", "envp")
@@ -198,6 +209,27 @@ def test_cli_mkdir_emits_json_and_reads_parent_from_env(monkeypatch):
     payload = json.loads(lines[0])
     assert payload["parentId"] == "envp"
     assert payload["action"] == "created"
+
+
+def test_cli_mkdir_explicit_parent_id_overrides_env(monkeypatch):
+    service = _make_service(
+        get_return={"id": "cli-p", "mimeType": FOLDER_MIME},
+        create_return=_created_folder(parents=("cli-p",)),
+    )
+    monkeypatch.setattr(drive_mod, "build_drive_write_service", lambda: service)
+
+    result = CliRunner().invoke(
+        app,
+        ["mkdir", "reports", "--parent-id", "cli-p"],
+        env={"GWS_CLI_DEFAULT_FOLDER_ID": "envp"},
+    )
+
+    assert result.exit_code == 0, result.stderr
+    assert service.files.return_value.get.call_args.kwargs["fileId"] == "cli-p"
+    assert service.files.return_value.create.call_args.kwargs["body"]["parents"] == [
+        "cli-p"
+    ]
+    assert json.loads(result.stdout)["parentId"] == "cli-p"
 
 
 def test_cli_mkdir_reports_drive_error_and_exits_nonzero(monkeypatch):

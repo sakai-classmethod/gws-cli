@@ -137,7 +137,7 @@ def guess_mime_type(path: Path) -> str:
     return mime or "application/octet-stream"
 
 
-def validate_folder(service: Any, folder_id: str) -> None:
+def validate_folder(service: Any, folder_id: str) -> str:
     meta = (
         service.files().get(fileId=folder_id, fields="id, driveId, mimeType").execute()
     )
@@ -149,6 +149,7 @@ def validate_folder(service: Any, folder_id: str) -> None:
         raise DriveUploadError(
             f"Target {folder_id} is not a folder (mimeType={meta.get('mimeType')})"
         )
+    return meta["id"]
 
 
 def _escape_query_literal(value: str) -> str:
@@ -158,12 +159,21 @@ def _escape_query_literal(value: str) -> str:
 def find_existing(service: Any, name: str, parent_id: str) -> list[dict]:
     safe = _escape_query_literal(name)
     query = f"'{parent_id}' in parents and name = '{safe}' and trashed = false"
-    resp = (
-        service.files()
-        .list(q=query, fields="files(id, name, mimeType)", spaces="drive")
-        .execute()
-    )
-    return resp.get("files", [])
+    files: list[dict] = []
+    page_token: str | None = None
+    while True:
+        list_kwargs: dict[str, Any] = {
+            "q": query,
+            "fields": "nextPageToken, files(id, name, mimeType)",
+            "spaces": "drive",
+        }
+        if page_token:
+            list_kwargs["pageToken"] = page_token
+        resp = service.files().list(**list_kwargs).execute()
+        files.extend(resp.get("files", []))
+        page_token = resp.get("nextPageToken")
+        if not page_token:
+            return files
 
 
 def _latest_revision_id(service: Any, file_id: str) -> str | None:
@@ -278,7 +288,7 @@ def mkdir_folder(
             f"Resolve ambiguity manually before retrying."
         )
 
-    response_fields = "id, name, mimeType, webViewLink"
+    response_fields = "id, name, mimeType, webViewLink, parents"
 
     if existing:
         match = existing[0]
@@ -307,13 +317,14 @@ def mkdir_folder(
         "name": result["name"],
         "mimeType": result["mimeType"],
         "webViewLink": result.get("webViewLink", ""),
-        "parentId": resolved_parent,
+        "parentId": (result.get("parents") or [resolved_parent])[0],
         "action": action,
     }
 
 
 def move_file(service: Any, file_id: str, to_folder_id: str, name: str | None) -> dict:
-    validate_folder(service, to_folder_id)
+    # "root" is only an alias: parents carry the canonical ID, so compare with that.
+    dest_id = validate_folder(service, to_folder_id)
 
     meta = (
         service.files()
@@ -331,25 +342,25 @@ def move_file(service: Any, file_id: str, to_folder_id: str, name: str | None) -
 
     collisions = [
         f["id"]
-        for f in find_existing(service, final_name, to_folder_id)
+        for f in find_existing(service, final_name, dest_id)
         if f["id"] != file_id
     ]
     if collisions:
         raise DriveMoveError(
-            f"'{final_name}' already exists in destination {to_folder_id}: "
+            f"'{final_name}' already exists in destination {dest_id}: "
             f"fileIds={collisions}. Pass --name to use a different name."
         )
 
     renaming = final_name != current_name
 
-    if to_folder_id in previous_parents and not renaming:
+    if dest_id in previous_parents and not renaming:
         result = meta
         action = "unchanged"
     else:
         update_kwargs: dict[str, Any] = {"fileId": file_id}
-        if to_folder_id not in previous_parents:
-            update_kwargs["addParents"] = to_folder_id
-        remove_parents = ",".join(p for p in previous_parents if p != to_folder_id)
+        if dest_id not in previous_parents:
+            update_kwargs["addParents"] = dest_id
+        remove_parents = ",".join(p for p in previous_parents if p != dest_id)
         if remove_parents:
             update_kwargs["removeParents"] = remove_parents
         result = (
@@ -368,7 +379,7 @@ def move_file(service: Any, file_id: str, to_folder_id: str, name: str | None) -
         "name": result["name"],
         "mimeType": result["mimeType"],
         "webViewLink": result.get("webViewLink", ""),
-        "parentId": to_folder_id,
+        "parentId": dest_id,
         "previousParentIds": previous_parents,
         "action": action,
     }

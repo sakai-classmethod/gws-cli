@@ -225,7 +225,7 @@ gws-cli drive move <file-id> --to <folder-id> [--name <new-name>]
 - 移動先が共有ドライブ配下 / フォルダ以外: エラー終了
 - 移動対象が共有ドライブ上: エラー終了（マイドライブ限定）
 - 移動先に同名（`--name` 指定時はその名前）のファイル／フォルダがある: エラー終了（fileId を列挙し、`--name` で別名にすれば回避可）
-- すでに移動先に存在し名前変更もない: API を呼ばずに `action: unchanged`
+- すでに移動先に存在し名前変更もない: メタデータの確認だけ行い、`files.update` を呼ばずに `action: unchanged`
 - それ以外: `files.update` の `addParents` / `removeParents` で親を付け替え、移動前の親はすべて外れる（`action: moved`）
 - フォルダを自分自身の子孫へ移動するなど Drive が拒否する操作は API エラー（`Error: 4xx ...`）で exit 1
 - `drive.file` スコープの仕様上、移動できるのはこの CLI（同じ OAuth クライアント）が作成したファイル・フォルダのみで、Drive UI や他ツールで作成されたものは検出・参照はできるが `files.update` が 403 を返す
